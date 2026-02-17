@@ -4,19 +4,24 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-from torchvision.models import resnet18
+import timm
 
 
-class ResNet18Encoder(nn.Module):
-    def __init__(self, *, weights=None):
+class TimmEncoder(nn.Module):
+    def __init__(self, model_name: str = "resnet18", *, pretrained: bool = False):
         super().__init__()
-        m = resnet18(weights=weights)
-        self.backbone = nn.Sequential(*list(m.children())[:-1])
-        self.out_dim = 512
+        self.model = timm.create_model(model_name, pretrained=pretrained, num_classes=0, global_pool="avg")
+        self.out_dim = int(getattr(self.model, "num_features", 0))
+        if self.out_dim <= 0:
+            raise RuntimeError(f"Could not infer feature dim for timm model: {model_name}")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.backbone(x)
-        return x.flatten(1)
+        return self.model(x)
+
+
+class ResNet18Encoder(TimmEncoder):
+    def __init__(self, *, pretrained: bool = False):
+        super().__init__("resnet18", pretrained=pretrained)
 
 
 class MLP(nn.Module):

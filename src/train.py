@@ -7,14 +7,14 @@ from typing import Optional
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.models import resnet18
+import timm
 
 from .defoca import DEFOCA
 from .pipeline import ClsPipeline, DefocaConfig, PretrainConfig, TrainConfig
 from .cl.ssl_datasets import DefocaPickView, MultiCropDataset, TwoCropDataset
 from .cl.ssl_eval import EvalConfig, PretrainEvaluator
 from .cl.ssl_methods import BarlowTwins, SimCLR, SwAV, VICReg
-from .cl.ssl_models import ResNet18Encoder, SwAVConfig
+from .cl.ssl_models import ResNet18Encoder, SwAVConfig, TimmEncoder
 from .pipeline import PretrainPipeline
 from .ufgvc import UFGVCDataset
 
@@ -93,6 +93,7 @@ def try_build_split(
 def main(argv: Optional[list[str]] = None) -> None:
     p = argparse.ArgumentParser(description="UFGVC classification with DEFOCA")
     p.add_argument("--task", type=str, default="supervised", choices=["supervised", "pretrain"])
+    p.add_argument("--arch", type=str, default="resnet18", help="timm backbone name")
     p.add_argument("--dataset", type=str, default="soybean")
     p.add_argument("--root", type=str, default="./data")
     p.add_argument("--img-size", type=int, default=224)
@@ -195,7 +196,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     print(f"num_classes={num_classes}")
 
     if args.task == "supervised":
-        model = resnet18(weights=None, num_classes=num_classes)
+        model = timm.create_model(args.arch, pretrained=False, num_classes=num_classes)
         train_loader = DataLoader(
             train_ds,
             batch_size=train_cfg.batch_size,
@@ -238,7 +239,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     if base_ssl_ds is None:
         raise RuntimeError(f"Dataset {args.dataset} has no 'train' split")
 
-    encoder = ResNet18Encoder(weights=None)
+    encoder = TimmEncoder(args.arch, pretrained=False)
     if args.ssl_method == "simclr":
         t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
         t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
@@ -277,19 +278,34 @@ def main(argv: Optional[list[str]] = None) -> None:
     else:
         if not (len(args.swav_nmb_crops) == len(args.swav_size_crops) == len(args.swav_min_scale_crops) == len(args.swav_max_scale_crops)):
             raise ValueError("SwAV crop args must have same length")
+
+        pick = None
+        if defoca_cfg.enabled:
+            defoca = DEFOCA(
+                P=defoca_cfg.P,
+                ratio=defoca_cfg.ratio,
+                sigma=defoca_cfg.sigma,
+                strategy=defoca_cfg.strategy,  # type: ignore[arg-type]
+                V=defoca_cfg.V,
+                max_attempts=defoca_cfg.max_attempts,
+                ensure_unique=defoca_cfg.ensure_unique,
+            )
+            pick = DefocaPickView(defoca, view_index=None)
+
         tx = []
         for size, min_s, max_s in zip(args.swav_size_crops, args.swav_min_scale_crops, args.swav_max_scale_crops):
+            t_list = [
+                transforms.RandomResizedCrop(int(size), scale=(float(min_s), float(max_s))),
+                transforms.RandomHorizontalFlip(0.5),
+                transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
+                transforms.ToTensor(),
+            ]
+            if pick is not None:
+                t_list.append(pick)
             tx.append(
-                transforms.Compose(
-                    [
-                        transforms.RandomResizedCrop(int(size), scale=(float(min_s), float(max_s))),
-                        transforms.RandomHorizontalFlip(0.5),
-                        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
-                        transforms.RandomGrayscale(p=0.2),
-                        transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
-                        transforms.ToTensor(),
-                    ]
-                )
+                transforms.Compose(t_list)
             )
         ssl_ds = MultiCropDataset(base_ssl_ds, transforms=tx, nmb_crops=args.swav_nmb_crops)
         swcfg = SwAVConfig(
