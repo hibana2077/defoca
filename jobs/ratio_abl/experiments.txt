@@ -1,0 +1,10 @@
+# Format: <seed> <arch> <ratio>
+# Lines starting with # are ignored.
+
+41 resnet18 0.1
+42 resnet18 0.1
+43 resnet18 0.1
+44 resnet18 0.1
+45 resnet18 0.1
+42 resnet50 0.1
+43 resnet50 0.1
