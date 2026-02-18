@@ -1,6 +1,8 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuhopper
+#PBS -J 0-4
+#PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
 #PBS -l mem=16GB
@@ -12,7 +14,7 @@ module load cuda/12.6.2
 
 set -euo pipefail
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR='/scratch/yp87/sl5952/defoca/jobs/Baseline'
 EXP_FILE="$SCRIPT_DIR/experiments.txt"
 
 # PBS array index (0-based). Fall back to 0 when running interactively.
@@ -32,10 +34,9 @@ if [[ -z "${LINE:-}" ]]; then
 fi
 
 SEED=$(echo "$LINE" | awk '{print $1}')
-ARCH=$(echo "$LINE" | awk '{print $2}')
 
-if [[ -z "${SEED:-}" || -z "${ARCH:-}" ]]; then
-  echo "ERROR: Bad experiment line $LINE_NO in $EXP_FILE (expected: <seed> <arch>): $LINE" >&2
+if [[ -z "${SEED:-}" ]]; then
+  echo "ERROR: Bad experiment line $LINE_NO in $EXP_FILE (expected: <seed>): $LINE" >&2
   exit 4
 fi
 
@@ -48,11 +49,7 @@ cd ../..
 LOG_DIR="logs/Baseline"
 mkdir -p "$LOG_DIR"
 
-# Unique log per (array index, seed, arch)
-ARCH_TAG=${ARCH//\//-}
-ARCH_TAG=${ARCH_TAG// /_}
-ARCH_TAG=$(echo "$ARCH_TAG" | tr -cd '[:alnum:]_.-')
-LOG_FILE="$LOG_DIR/B003_idx${IDX}_seed${SEED}_arch${ARCH_TAG}.log"
+LOG_FILE="$LOG_DIR/B003_idx${IDX}_seed${SEED}.log"
 
 {
   echo "===== DEFOCA job start ====="
@@ -60,7 +57,7 @@ LOG_FILE="$LOG_DIR/B003_idx${IDX}_seed${SEED}_arch${ARCH_TAG}.log"
   echo "host=$(hostname)"
   echo "IDX=$IDX LINE_NO=$LINE_NO"
   echo "EXPERIMENT=$LINE"
-  echo "SEED=$SEED ARCH=$ARCH"
+  echo "SEED=$SEED"
   echo "LOG_FILE=$LOG_FILE"
   echo "==========================="
 } >> "$LOG_FILE"
@@ -69,7 +66,7 @@ python3 -m src.train \
   --task pretrain \
   --ssl-method swav \
   --dataset cifar100 --root ./data \
-  --arch "$ARCH" \
+  --arch resnet18 \
   --img-size 224 \
   --epochs 100 \
   --batch-size 256 \
