@@ -193,12 +193,26 @@ class UFGVCDataset(Dataset):
         try:
             # Load parquet file
             df = pd.read_parquet(self.filepath)
-            
+
             # Validate columns
-            expected_cols = {'image', 'label', 'class_name', 'split'}
-            if not expected_cols.issubset(df.columns):
-                missing_cols = expected_cols - set(df.columns)
+            base_required_cols = {"image", "label", "split"}
+            if not base_required_cols.issubset(df.columns):
+                missing_cols = base_required_cols - set(df.columns)
                 raise ValueError(f"Missing columns: {missing_cols}")
+
+            # Some parquet exports (e.g., cifar10/cifar100) don't have `class_name`.
+            # Normalize to a single canonical column name so the rest of the code
+            # can be consistent.
+            if "class_name" in df.columns:
+                self.class_name_col = "class_name"
+            elif "class_label" in df.columns:
+                self.class_name_col = "class_label"
+                df = df.rename(columns={"class_label": "class_name"})
+                self.class_name_col = "class_name"
+            else:
+                # Fall back to using the raw numeric label as a string class name.
+                df["class_name"] = df["label"].astype(str)
+                self.class_name_col = "class_name"
             
             # Filter by split
             self.data = df[df['split'] == self.split].reset_index(drop=True)
@@ -271,12 +285,19 @@ class UFGVCDataset(Dataset):
     
     def get_class_name(self, idx: int) -> str:
         """Get class name for a given index"""
-        return self.data.iloc[idx]['class_name']
+        return self.data.iloc[idx]["class_name"]
     
     def get_dataset_info(self) -> dict:
         """Get comprehensive information about the dataset"""
         # Get split distribution
         full_df = pd.read_parquet(self.filepath)
+
+        # Mirror the same class-name normalization used in _load_data
+        if "class_name" not in full_df.columns and "class_label" in full_df.columns:
+            full_df = full_df.rename(columns={"class_label": "class_name"})
+        elif "class_name" not in full_df.columns:
+            full_df["class_name"] = full_df["label"].astype(str)
+
         split_counts = full_df['split'].value_counts().to_dict()
         total_classes = len(full_df['class_name'].unique())
         
@@ -300,7 +321,7 @@ class UFGVCDataset(Dataset):
             'dataset': self.dataset_name,
             'index': idx,
             'label': int(row['label']),
-            'class_name': row['class_name'],
+            'class_name': row.get('class_name', row.get('class_label', str(row['label']))),
             'split': row['split']
         }
     
