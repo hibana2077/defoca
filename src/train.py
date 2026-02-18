@@ -86,7 +86,7 @@ def try_build_split(
             transform=transform,
             download=download,
         )
-    except ValueError:
+    except (ValueError, RuntimeError):
         return None
 
 
