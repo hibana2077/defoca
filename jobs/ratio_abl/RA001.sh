@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuhopper
-#PBS -J 0-9
+#PBS -J 10-19
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
@@ -17,8 +17,8 @@ set -euo pipefail
 SCRIPT_DIR='/scratch/yp87/sl5952/defoca/jobs/ratio_abl'
 EXP_FILE="$SCRIPT_DIR/experiments.txt"
 
-# PBS array index (0-based). Fall back to 0 when running interactively.
-IDX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
+# PBS array index (0-based). Fall back to 10 when running interactively.
+IDX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-10}}"
 LINE_NO=$((IDX + 1))
 
 if [[ ! -f "$EXP_FILE" ]]; then
@@ -55,7 +55,7 @@ mkdir -p "$LOG_DIR"
 ARCH_TAG=${ARCH//\//-}
 ARCH_TAG=${ARCH_TAG// /_}
 ARCH_TAG=$(echo "$ARCH_TAG" | tr -cd '[:alnum:]_.-')
-LOG_FILE="$LOG_DIR/RA000_idx${IDX}_seed${SEED}_arch${ARCH_TAG}.log"
+LOG_FILE="$LOG_DIR/RA001_idx${IDX}_seed${SEED}_arch${ARCH_TAG}.log"
 
 {
   echo "===== DEFOCA job start ====="
