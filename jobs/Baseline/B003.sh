@@ -10,6 +10,35 @@
 
 module load cuda/12.6.2
 
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+EXP_FILE="$SCRIPT_DIR/experiments.txt"
+
+# PBS array index (0-based). Fall back to 0 when running interactively.
+IDX="${PBS_ARRAY_INDEX:-${PBS_ARRAYID:-0}}"
+LINE_NO=$((IDX + 1))
+
+if [[ ! -f "$EXP_FILE" ]]; then
+  echo "ERROR: experiments file not found: $EXP_FILE" >&2
+  exit 2
+fi
+
+# Pick the Nth non-empty, non-comment line.
+LINE=$(awk -v n="$LINE_NO" 'NF && $1 !~ /^#/ {i++; if (i==n) {print; exit}}' "$EXP_FILE")
+if [[ -z "${LINE:-}" ]]; then
+  echo "ERROR: No experiment line $LINE_NO (IDX=$IDX) in $EXP_FILE" >&2
+  exit 3
+fi
+
+SEED=$(echo "$LINE" | awk '{print $1}')
+ARCH=$(echo "$LINE" | awk '{print $2}')
+
+if [[ -z "${SEED:-}" || -z "${ARCH:-}" ]]; then
+  echo "ERROR: Bad experiment line $LINE_NO in $EXP_FILE (expected: <seed> <arch>): $LINE" >&2
+  exit 4
+fi
+
 source /scratch/yp87/sl5952/defoca/.venv/bin/activate
 export HF_HOME="/scratch/yp87/sl5952/CARROT/.cache"
 export HF_HUB_OFFLINE=1
@@ -22,7 +51,7 @@ python3 -m src.train \
   --task pretrain \
   --ssl-method swav \
   --dataset soybean --root ./data \
-  --arch resnet18 \
+  --arch "$ARCH" \
   --img-size 224 \
   --epochs 100 \
   --batch-size 256 \
@@ -40,5 +69,5 @@ python3 -m src.train \
   --swav-min-scale-crops 0.14 \
   --swav-max-scale-crops 1.0 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
-  --seed 42 --device cuda \
+  --seed "$SEED" --device cuda \
   >> logs/Baseline/B003.log 2>&1

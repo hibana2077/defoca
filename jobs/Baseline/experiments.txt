@@ -1,0 +1,7 @@
+# Format: <seed> <arch>
+# Lines starting with # are ignored.
+
+42 resnet18
+43 resnet18
+42 resnet50
+43 resnet50
