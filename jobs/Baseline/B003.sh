@@ -68,7 +68,7 @@ LOG_FILE="$LOG_DIR/B003_idx${IDX}_seed${SEED}_arch${ARCH_TAG}.log"
 python3 -m src.train \
   --task pretrain \
   --ssl-method swav \
-  --dataset soybean --root ./data \
+  --dataset cifar100 --root ./data \
   --arch "$ARCH" \
   --img-size 224 \
   --epochs 100 \

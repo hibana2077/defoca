@@ -4,7 +4,7 @@
 #PBS -l ngpus=1
 #PBS -l ncpus=12
 #PBS -l mem=16GB
-#PBS -l walltime=08:00:00
+#PBS -l walltime=00:55:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
 
@@ -21,7 +21,7 @@ mkdir -p logs/Baseline
 python3 -m src.train \
   --task pretrain \
   --ssl-method simclr \
-  --dataset soybean --root ./data \
+  --dataset cifar100 --root ./data \
   --arch resnet18 \
   --img-size 224 \
   --epochs 100 \
@@ -31,4 +31,4 @@ python3 -m src.train \
   --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed 42 --device cuda \
-  >> logs/Baseline/B000.log 2>&1
+  >> logs/Baseline/B002.log 2>&1
