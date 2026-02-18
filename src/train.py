@@ -106,7 +106,12 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--seed", type=int, default=42)
 
     # DEFOCA
-    p.add_argument("--defoca", action="store_true", help="Enable DEFOCA during training")
+    p.add_argument("--defoca", action="store_true", help="Enable DEFOCA during supervised training")
+    p.add_argument(
+        "--defoca-ssl",
+        action="store_true",
+        help="Enable DEFOCA inside SSL augmentations (uses random patch selection)",
+    )
     p.add_argument("--P", type=int, default=4)
     p.add_argument("--ratio", type=float, default=0.25)
     p.add_argument("--sigma", type=float, default=1.0)
@@ -191,8 +196,20 @@ def main(argv: Optional[list[str]] = None) -> None:
         ensure_unique=not args.no_unique,
     )
 
+    defoca_ssl_cfg = DefocaConfig(
+        enabled=bool(args.defoca_ssl),
+        P=args.P,
+        ratio=args.ratio,
+        sigma=args.sigma,
+        strategy="random",
+        V=args.V,
+        max_attempts=args.max_attempts,
+        ensure_unique=not args.no_unique,
+    )
+
     print("TrainConfig:", asdict(train_cfg))
     print("DefocaConfig:", asdict(defoca_cfg))
+    print("DefocaSSLConfig:", asdict(defoca_ssl_cfg))
     print(f"num_classes={num_classes}")
 
     if args.task == "supervised":
@@ -241,8 +258,8 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     encoder = TimmEncoder(args.arch, pretrained=False)
     if args.ssl_method == "simclr":
-        t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
-        t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
+        t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
+        t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
         ssl_ds = TwoCropDataset(base_ssl_ds, t1=t1, t2=t2)
         method = SimCLR(
             encoder=encoder,
@@ -252,8 +269,8 @@ def main(argv: Optional[list[str]] = None) -> None:
             temperature=args.ssl_temperature,
         )
     elif args.ssl_method == "vicreg":
-        t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
-        t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
+        t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
+        t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
         ssl_ds = TwoCropDataset(base_ssl_ds, t1=t1, t2=t2)
         method = VICReg(
             encoder=encoder,
@@ -265,8 +282,8 @@ def main(argv: Optional[list[str]] = None) -> None:
             cov_coeff=args.ssl_cov,
         )
     elif args.ssl_method == "barlow":
-        t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
-        t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_cfg, view_index=None)
+        t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
+        t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
         ssl_ds = TwoCropDataset(base_ssl_ds, t1=t1, t2=t2)
         method = BarlowTwins(
             encoder=encoder,
@@ -280,15 +297,15 @@ def main(argv: Optional[list[str]] = None) -> None:
             raise ValueError("SwAV crop args must have same length")
 
         pick = None
-        if defoca_cfg.enabled:
+        if defoca_ssl_cfg.enabled:
             defoca = DEFOCA(
-                P=defoca_cfg.P,
-                ratio=defoca_cfg.ratio,
-                sigma=defoca_cfg.sigma,
-                strategy=defoca_cfg.strategy,  # type: ignore[arg-type]
-                V=defoca_cfg.V,
-                max_attempts=defoca_cfg.max_attempts,
-                ensure_unique=defoca_cfg.ensure_unique,
+                P=defoca_ssl_cfg.P,
+                ratio=defoca_ssl_cfg.ratio,
+                sigma=defoca_ssl_cfg.sigma,
+                strategy=defoca_ssl_cfg.strategy,  # type: ignore[arg-type]
+                V=defoca_ssl_cfg.V,
+                max_attempts=defoca_ssl_cfg.max_attempts,
+                ensure_unique=defoca_ssl_cfg.ensure_unique,
             )
             pick = DefocaPickView(defoca, view_index=None)
 
