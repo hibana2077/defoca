@@ -1,0 +1,34 @@
+#!/bin/bash
+#PBS -P yp87
+#PBS -q gpuhopper
+#PBS -l ngpus=1
+#PBS -l ncpus=12
+#PBS -l mem=16GB
+#PBS -l walltime=08:00:00
+#PBS -l wd
+#PBS -l storage=scratch/yp87
+
+module load cuda/12.6.2
+
+source /scratch/yp87/sl5952/TPsiAct/.venv/bin/activate
+export HF_HOME="/scratch/yp87/sl5952/CARROT/.cache"
+export HF_HUB_OFFLINE=1
+
+cd ../..
+
+mkdir -p logs/Baseline
+
+python3 -m src.train \
+  --task pretrain \
+  --ssl-method simclr \
+  --dataset soybean --root ./data \
+  --arch resnet18 \
+  --img-size 224 \
+  --epochs 100 \
+  --batch-size 256 \
+  --num-workers 4 \
+  --lr 3e-4 --weight-decay 1e-4 \
+  --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
+  --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
+  --seed 42 --device cuda \
+  >> logs/Baseline/B000.log 2>&1
