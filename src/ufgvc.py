@@ -105,7 +105,18 @@ class UFGVCDataset(Dataset):
             'url': '',
             'filename': 'oxford_pets.parquet',
             'description': 'Oxford-IIIT Pets for pet classification'
+        },
+        'cifar100': {
+            'url': 'https://huggingface.co/datasets/hibana2077/CV-dataset-all-in-parquet/resolve/main/datasets/cifar100.parquet?download=true',
+            'filename': 'cifar100.parquet',
+            'description': 'CIFAR-100 for general object classification'
+        },
+        'cifar10': {
+            'url': 'https://huggingface.co/datasets/hibana2077/CV-dataset-all-in-parquet/resolve/main/datasets/cifar10.parquet?download=true',
+            'filename': 'cifar10.parquet',
+            'description': 'CIFAR-10 for general object classification'
         }
+
     }
     
     def __init__(
