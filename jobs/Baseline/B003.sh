@@ -45,7 +45,25 @@ export HF_HUB_OFFLINE=1
 
 cd ../..
 
-mkdir -p logs/Baseline
+LOG_DIR="logs/Baseline"
+mkdir -p "$LOG_DIR"
+
+# Unique log per (array index, seed, arch)
+ARCH_TAG=${ARCH//\//-}
+ARCH_TAG=${ARCH_TAG// /_}
+ARCH_TAG=$(echo "$ARCH_TAG" | tr -cd '[:alnum:]_.-')
+LOG_FILE="$LOG_DIR/B003_idx${IDX}_seed${SEED}_arch${ARCH_TAG}.log"
+
+{
+  echo "===== DEFOCA job start ====="
+  echo "date=$(date -Is)"
+  echo "host=$(hostname)"
+  echo "IDX=$IDX LINE_NO=$LINE_NO"
+  echo "EXPERIMENT=$LINE"
+  echo "SEED=$SEED ARCH=$ARCH"
+  echo "LOG_FILE=$LOG_FILE"
+  echo "==========================="
+} >> "$LOG_FILE"
 
 python3 -m src.train \
   --task pretrain \
@@ -70,4 +88,4 @@ python3 -m src.train \
   --swav-max-scale-crops 1.0 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed "$SEED" --device cuda \
-  >> logs/Baseline/B003.log 2>&1
+  >> "$LOG_FILE" 2>&1

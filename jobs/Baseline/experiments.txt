@@ -3,5 +3,6 @@
 
 42 resnet18
 43 resnet18
+44 resnet18
 42 resnet50
 43 resnet50
