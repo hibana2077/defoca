@@ -10,7 +10,7 @@
 
 module load cuda/12.6.2
 
-source /scratch/yp87/sl5952/TPsiAct/.venv/bin/activate
+source /scratch/yp87/sl5952/defoca/.venv/bin/activate
 export HF_HOME="/scratch/yp87/sl5952/CARROT/.cache"
 export HF_HUB_OFFLINE=1
 
