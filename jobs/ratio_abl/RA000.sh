@@ -12,7 +12,7 @@ module load cuda/12.6.2
 
 set -euo pipefail
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR='/scratch/yp87/sl5952/defoca/jobs/ratio_abl'
 EXP_FILE="$SCRIPT_DIR/experiments.txt"
 
 # PBS array index (0-based). Fall back to 0 when running interactively.
