@@ -1,6 +1,8 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuhopper
+#PBS -J 0-19
+#PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
 #PBS -l mem=16GB
