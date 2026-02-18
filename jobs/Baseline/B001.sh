@@ -21,7 +21,7 @@ mkdir -p logs/Baseline
 python3 -m src.train \
   --task pretrain \
   --ssl-method barlow \
-  --dataset soybean --root ./data \
+  --dataset cifar100 --root ./data \
   --arch resnet18 \
   --img-size 224 \
   --epochs 100 \
