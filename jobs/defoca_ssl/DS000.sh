@@ -73,7 +73,6 @@ python3 -u -m src.train \
   --lr 3e-4 --weight-decay 1e-4 \
   --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
   --defoca-ssl --P 4 --ratio 0.25 --sigma 2.0 --strategy random \
-  --no-unique --V 2\
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed "$SEED" --device cuda \
   >> "$LOG_FILE" 2>&1
