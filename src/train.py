@@ -51,7 +51,10 @@ def build_ssl_transforms(img_size: int, *, defoca_cfg: DefocaConfig | None, view
                 p=0.8,
             ),
             transforms.RandomGrayscale(p=0.2),
-            transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
+            transforms.RandomApply(
+                [transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0))],
+                p=0.5,
+            ),
             transforms.ToTensor(),
         ]
     )
@@ -341,7 +344,10 @@ def main(argv: Optional[list[str]] = None) -> None:
                 transforms.RandomHorizontalFlip(0.5),
                 transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
                 transforms.RandomGrayscale(p=0.2),
-                transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
+                transforms.RandomApply(
+                    [transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0))],
+                    p=0.5,
+                ),
                 transforms.ToTensor(),
             ]
             if pick is not None:
@@ -361,7 +367,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         method = SwAV(encoder=encoder, feature_dim=encoder.out_dim, cfg=swcfg, hidden_dim=args.ssl_hidden_dim)
 
     print(f"[DEBUG] ssl_ds type={type(ssl_ds).__name__}  len={len(ssl_ds)}", flush=True)
-    print(f"[DEBUG] DataLoader: batch_size={pre_cfg.batch_size}  num_workers={pre_cfg.num_workers}  prefetch_factor={4 if pre_cfg.num_workers > 0 else None}", flush=True)
+    print(f"[DEBUG] DataLoader: batch_size={pre_cfg.batch_size}  num_workers={pre_cfg.num_workers}  prefetch_factor={2 if pre_cfg.num_workers > 0 else None}", flush=True)
     pre_loader = DataLoader(
         ssl_ds,
         batch_size=pre_cfg.batch_size,
@@ -370,7 +376,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         pin_memory=True,
         drop_last=True,
         persistent_workers=pre_cfg.num_workers > 0,
-        prefetch_factor=4 if pre_cfg.num_workers > 0 else None,
+        prefetch_factor=2 if pre_cfg.num_workers > 0 else None,
     )
 
     # ---- DataLoader timing benchmark (first 5 batches) ----
