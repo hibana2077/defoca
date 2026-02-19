@@ -63,7 +63,7 @@ LOG_FILE="$LOG_DIR/B002_idx${IDX}_seed${SEED}.log"
 
 python3 -u -m src.train \
   --task pretrain \
-  --ssl-method simclr \
+  --ssl-method vicreg \
   --dataset cifar100 --root ./data \
   --arch resnet18 \
   --img-size 224 \
@@ -71,7 +71,8 @@ python3 -u -m src.train \
   --batch-size 256 \
   --num-workers 8 \
   --lr 3e-4 --weight-decay 1e-4 \
-  --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
+  --ssl-proj-dim 8192 --ssl-hidden-dim 8192 \
+  --ssl-sim 25.0 --ssl-std 25.0 --ssl-cov 1.0 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed "$SEED" --device cuda \
   >> "$LOG_FILE" 2>&1
