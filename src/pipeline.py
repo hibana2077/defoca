@@ -104,7 +104,6 @@ class ClsPipeline:
             lr=train_cfg.lr,
             weight_decay=train_cfg.weight_decay,
         )
-        self.scaler = torch.amp.GradScaler(device=train_cfg.device)
 
         self.defoca: Optional[DEFOCA]
         if defoca_cfg.enabled:
@@ -177,12 +176,10 @@ class ClsPipeline:
             x, y = self._prepare_train_batch(images, labels, generator=generator)
 
             self.optimizer.zero_grad(set_to_none=True)
-            with torch.amp.autocast(device_type=self.device.type):
-                logits = self.model(x)
-                loss = self.criterion(logits, y)
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            logits = self.model(x)
+            loss = self.criterion(logits, y)
+            loss.backward()
+            self.optimizer.step()
 
             bs = int(y.size(0))
             total_loss += float(loss.item()) * bs
@@ -224,7 +221,6 @@ class PretrainPipeline:
             lr=pretrain_cfg.lr,
             weight_decay=pretrain_cfg.weight_decay,
         )
-        self.scaler = torch.amp.GradScaler(device=pretrain_cfg.device)
 
     def _to_device(self, views: Views) -> Views:
         if isinstance(views, tuple):
@@ -247,11 +243,9 @@ class PretrainPipeline:
         for step, (views, _) in enumerate(loader):
             views = self._to_device(views)
             self.optimizer.zero_grad(set_to_none=True)
-            with torch.amp.autocast(device_type=self.device.type):
-                loss = self.method(views)
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            loss = self.method(views)
+            loss.backward()
+            self.optimizer.step()
 
             bs = int(views[0].size(0) if isinstance(views, tuple) else views[0].size(0))
             total += bs
