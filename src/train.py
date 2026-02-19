@@ -232,7 +232,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     # --------------------------------
 
     if args.task == "supervised":
-        model = timm.create_model(args.arch, pretrained=False, num_classes=num_classes)
+        model = timm.create_model(args.arch, pretrained=True, num_classes=num_classes)
         train_loader = DataLoader(
             train_ds,
             batch_size=train_cfg.batch_size,
