@@ -62,7 +62,7 @@ LOG_FILE="$LOG_DIR/B003_idx${IDX}_seed${SEED}.log"
   echo "==========================="
 } >> "$LOG_FILE"
 
-python3 -m src.train \
+python3 -u -m src.train \
   --task pretrain \
   --ssl-method swav \
   --dataset cifar100 --root ./data \

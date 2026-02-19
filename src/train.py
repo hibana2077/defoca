@@ -159,6 +159,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     if train_ds is None:
         raise RuntimeError(f"Dataset {args.dataset} has no 'train' split")
 
+    print(f"Found {len(train_ds)} training samples")
+
     val_ds = try_build_split(
         dataset_name=args.dataset,
         root=args.root,
@@ -195,7 +197,6 @@ def main(argv: Optional[list[str]] = None) -> None:
         max_attempts=args.max_attempts,
         ensure_unique=not args.no_unique,
     )
-
     defoca_ssl_cfg = DefocaConfig(
         enabled=bool(args.defoca_ssl),
         P=args.P,
