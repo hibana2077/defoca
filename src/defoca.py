@@ -331,3 +331,43 @@ class DEFOCA(nn.Module):
             return torch.stack(out, dim=0)
 
         raise ValueError(f"Expected (C,H,W) or (B,C,H,W), got shape={tuple(x.shape)}")
+
+    def apply_one_view(
+        self,
+        x: torch.Tensor,
+        *,
+        generator: Optional[torch.Generator] = None,
+    ) -> torch.Tensor:
+        """Generate a single DEFOCA view: (C,H,W) -> (C,H,W).
+
+        Uses Route A from ssl_defoca.md §3 (recommended for SSL):
+          1. Blur the *whole* image once (one separable-conv call).
+          2. Build a binary pixel mask from the selected patch grid.
+          3. Alpha-blend: out = mask * x + (1 - mask) * x_blur.
+
+        Compared to calling forward() and discarding V-1 views:
+          - Avoids generating V views when only one is needed (V× saving).
+          - Replaces n per-patch blur calls with a single full-image blur.
+        """
+        if x.dim() != 3:
+            raise ValueError(f"apply_one_view expects (C,H,W), got {tuple(x.shape)}")
+
+        c, h, w = x.shape
+        grid = PatchGrid(H=h, W=w, P=self.P)
+        grid.validate()
+        n = self._n_from_grid(grid)
+        if n == 0:
+            return x.clone()
+
+        idxs = self._selector.select(grid, n, generator=generator)
+
+        # Route A: one full-image blur, then patch-mask blend.
+        x_blur = gaussian_blur_patch(x, self.sigma)  # (C,H,W)
+
+        # keep_mask: 1 = keep sharp, 0 = replace with blur.
+        keep_mask = x.new_ones(1, h, w)
+        for idx in idxs:
+            y0, y1, x0, x1 = grid.bbox(int(idx))
+            keep_mask[:, y0:y1, x0:x1] = 0.0
+
+        return keep_mask * x + (1.0 - keep_mask) * x_blur

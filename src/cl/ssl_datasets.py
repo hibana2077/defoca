@@ -62,16 +62,22 @@ class DefocaPickView:
                 flush=True,
                 file=sys.stderr,
             )
-        views = self.defoca(x.unsqueeze(0)).squeeze(0)  # (V,C,H,W)
+
+        if self.view_index is None:
+            # SSL fast path (ssl_defoca.md Route A):
+            # generate exactly one view instead of all V views.
+            out = self.defoca.apply_one_view(x)
+        else:
+            # Specific view requested — generate all V views and index.
+            views = self.defoca(x.unsqueeze(0)).squeeze(0)  # (V,C,H,W)
+            out = views[int(self.view_index)]
+
         if self._call_count <= 3:
             import sys
             print(
                 f"[DEBUG DefocaPickView] call #{self._call_count}  "
-                f"views_shape={tuple(views.shape)}",
+                f"out_shape={tuple(out.shape)}",
                 flush=True,
                 file=sys.stderr,
             )
-        if self.view_index is not None:
-            return views[int(self.view_index)]
-        j = int(torch.randint(0, views.size(0), (1,)).item())
-        return views[j]
+        return out
