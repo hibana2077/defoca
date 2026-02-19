@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence, Tuple, Union
+import time
 
 import torch
 import torch.nn as nn
@@ -240,17 +241,53 @@ class PretrainPipeline:
         total = 0
         total_loss = 0.0
 
+        _load_time_total = 0.0
+        _compute_time_total = 0.0
+        _t_iter_start = time.perf_counter()
+
         for step, (views, _) in enumerate(loader):
+            _t_data_end = time.perf_counter()
+            _load_time = _t_data_end - _t_iter_start
+            _load_time_total += _load_time
+
             views = self._to_device(views)
             self.optimizer.zero_grad(set_to_none=True)
             loss = self.method(views)
             loss.backward()
             self.optimizer.step()
 
+            _t_compute_end = time.perf_counter()
+            _compute_time = _t_compute_end - _t_data_end
+            _compute_time_total += _compute_time
+
             bs = int(views[0].size(0) if isinstance(views, tuple) else views[0].size(0))
             total += bs
             total_loss += float(loss.item()) * bs
-            if self.pretrain_cfg.log_every > 0 and (step + 1) % self.pretrain_cfg.log_every == 0:
-                print(f"epoch={epoch} step={step+1}/{len(loader)} loss={total_loss/max(1,total):.4f}")
 
+            # First 3 steps: print detailed timing every time
+            if step < 3:
+                print(
+                    f"[DEBUG pretrain] epoch={epoch} step={step}  "
+                    f"data_load={_load_time:.3f}s  compute={_compute_time:.3f}s  "
+                    f"loss={loss.item():.4f}",
+                    flush=True,
+                )
+
+            if self.pretrain_cfg.log_every > 0 and (step + 1) % self.pretrain_cfg.log_every == 0:
+                avg_load = _load_time_total / (step + 1)
+                avg_compute = _compute_time_total / (step + 1)
+                print(
+                    f"epoch={epoch} step={step+1}/{len(loader)} loss={total_loss/max(1,total):.4f}  "
+                    f"[avg data_load={avg_load:.3f}s  avg compute={avg_compute:.3f}s]",
+                    flush=True,
+                )
+
+            _t_iter_start = time.perf_counter()
+
+        print(
+            f"[DEBUG pretrain timing] epoch={epoch} TOTAL "
+            f"data_load={_load_time_total:.2f}s  compute={_compute_time_total:.2f}s  "
+            f"data_frac={_load_time_total / max(1e-6, _load_time_total + _compute_time_total):.1%}",
+            flush=True,
+        )
         return {"loss": total_loss / max(1, total)}

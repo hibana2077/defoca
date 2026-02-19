@@ -50,9 +50,27 @@ class DefocaPickView:
     def __init__(self, defoca_module, *, view_index: Optional[int] = None):
         self.defoca = defoca_module
         self.view_index = view_index
+        self._call_count = 0
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        self._call_count += 1
+        if self._call_count <= 3:
+            import sys
+            print(
+                f"[DEBUG DefocaPickView] call #{self._call_count}  "
+                f"input_shape={tuple(x.shape)}  view_index={self.view_index}",
+                flush=True,
+                file=sys.stderr,
+            )
         views = self.defoca(x.unsqueeze(0)).squeeze(0)  # (V,C,H,W)
+        if self._call_count <= 3:
+            import sys
+            print(
+                f"[DEBUG DefocaPickView] call #{self._call_count}  "
+                f"views_shape={tuple(views.shape)}",
+                flush=True,
+                file=sys.stderr,
+            )
         if self.view_index is not None:
             return views[int(self.view_index)]
         j = int(torch.randint(0, views.size(0), (1,)).item())

@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from typing import Optional
+import sys
+import time
 
 import torch
 from torch.utils.data import DataLoader
@@ -54,9 +56,12 @@ def build_ssl_transforms(img_size: int, *, defoca_cfg: DefocaConfig | None, view
         ]
     )
 
+    print(f"[DEBUG build_ssl_transforms] defoca_cfg={defoca_cfg}", flush=True)
     if defoca_cfg is None or not defoca_cfg.enabled:
+        print("[DEBUG build_ssl_transforms] DEFOCA disabled -> returning base transform only", flush=True)
         return base
 
+    print("[DEBUG build_ssl_transforms] DEFOCA ENABLED -> appending DefocaPickView", flush=True)
     defoca = DEFOCA(
         P=defoca_cfg.P,
         ratio=defoca_cfg.ratio,
@@ -213,6 +218,16 @@ def main(argv: Optional[list[str]] = None) -> None:
     print("DefocaSSLConfig:", asdict(defoca_ssl_cfg))
     print(f"num_classes={num_classes}")
 
+    # ---- GPU / env debug info ----
+    print(f"[DEBUG] Python={sys.version}", flush=True)
+    print(f"[DEBUG] PyTorch={torch.__version__}", flush=True)
+    print(f"[DEBUG] CUDA available={torch.cuda.is_available()}", flush=True)
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            print(f"[DEBUG] GPU {i}: {props.name}  total_mem={props.total_memory/1024**3:.1f} GB", flush=True)
+    # --------------------------------
+
     if args.task == "supervised":
         model = timm.create_model(args.arch, pretrained=False, num_classes=num_classes)
         train_loader = DataLoader(
@@ -261,10 +276,15 @@ def main(argv: Optional[list[str]] = None) -> None:
     if base_ssl_ds is None:
         raise RuntimeError(f"Dataset {args.dataset} has no 'train' split")
 
+    print(f"[DEBUG] Building encoder: {args.arch}", flush=True)
     encoder = TimmEncoder(args.arch, pretrained=False)
+    print(f"[DEBUG] encoder.out_dim={encoder.out_dim}", flush=True)
     if args.ssl_method == "simclr":
+        print("[DEBUG] building SimCLR transforms (t1, t2)...", flush=True)
         t1 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
         t2 = build_ssl_transforms(args.img_size, defoca_cfg=defoca_ssl_cfg, view_index=None)
+        print(f"[DEBUG] t1 pipeline:\n{t1}", flush=True)
+        print(f"[DEBUG] t2 pipeline:\n{t2}", flush=True)
         ssl_ds = TwoCropDataset(base_ssl_ds, t1=t1, t2=t2)
         method = SimCLR(
             encoder=encoder,
@@ -340,6 +360,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         )
         method = SwAV(encoder=encoder, feature_dim=encoder.out_dim, cfg=swcfg, hidden_dim=args.ssl_hidden_dim)
 
+    print(f"[DEBUG] ssl_ds type={type(ssl_ds).__name__}  len={len(ssl_ds)}", flush=True)
+    print(f"[DEBUG] DataLoader: batch_size={pre_cfg.batch_size}  num_workers={pre_cfg.num_workers}  prefetch_factor={4 if pre_cfg.num_workers > 0 else None}", flush=True)
     pre_loader = DataLoader(
         ssl_ds,
         batch_size=pre_cfg.batch_size,
@@ -350,7 +372,35 @@ def main(argv: Optional[list[str]] = None) -> None:
         persistent_workers=pre_cfg.num_workers > 0,
         prefetch_factor=4 if pre_cfg.num_workers > 0 else None,
     )
+
+    # ---- DataLoader timing benchmark (first 5 batches) ----
+    print("[DEBUG] Benchmarking DataLoader: timing first 5 batches...", flush=True)
+    _t0 = time.perf_counter()
+    for _i, (_views, _) in enumerate(pre_loader):
+        _t1 = time.perf_counter()
+        _v0 = _views[0] if isinstance(_views, (list, tuple)) else _views
+        print(
+            f"[DEBUG] batch {_i}: load_time={_t1 - _t0:.3f}s  "
+            f"view0_shape={tuple(_v0.shape)}  "
+            f"view0_dtype={_v0.dtype}",
+            flush=True,
+        )
+        _t0 = _t1
+        if _i >= 4:
+            break
+    print("[DEBUG] DataLoader benchmark done.", flush=True)
+    if torch.cuda.is_available():
+        print(f"[DEBUG] GPU mem after data loading: "
+              f"allocated={torch.cuda.memory_allocated()/1024**2:.1f} MB  "
+              f"reserved={torch.cuda.memory_reserved()/1024**2:.1f} MB", flush=True)
+    # -------------------------------------------------------
+
     pre_pipeline = PretrainPipeline(method=method, pretrain_cfg=pre_cfg)
+    print(f"[DEBUG] Method moved to device. Starting pretrain loop.", flush=True)
+    if torch.cuda.is_available():
+        print(f"[DEBUG] GPU mem after model init: "
+              f"allocated={torch.cuda.memory_allocated()/1024**2:.1f} MB  "
+              f"reserved={torch.cuda.memory_reserved()/1024**2:.1f} MB", flush=True)
     for epoch in range(1, pre_cfg.epochs + 1):
         m = pre_pipeline.train_one_epoch(pre_loader, epoch=epoch)
         print(f"epoch={epoch} pretrain loss={m['loss']:.4f}")
