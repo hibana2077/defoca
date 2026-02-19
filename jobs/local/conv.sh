@@ -1,5 +1,5 @@
 cd ../../
-
+mkdir -p logs
 python3 -u python -m src.train \
     --dataset soybean --root ./data \
     --defoca --P 4 --ratio 0.25 --sigma 1.0 \
