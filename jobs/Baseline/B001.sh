@@ -69,7 +69,7 @@ python3 -m src.train \
   --img-size 224 \
   --epochs 100 \
   --batch-size 256 \
-  --num-workers 4 \
+  --num-workers 8 \
   --lr 3e-4 --weight-decay 1e-4 \
   --ssl-proj-dim 8192 --ssl-hidden-dim 8192 --ssl-lambd 0.005 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \

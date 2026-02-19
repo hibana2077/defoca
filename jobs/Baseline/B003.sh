@@ -70,7 +70,7 @@ python3 -m src.train \
   --img-size 224 \
   --epochs 100 \
   --batch-size 256 \
-  --num-workers 4 \
+  --num-workers 8 \
   --lr 3e-4 --weight-decay 1e-4 \
   --ssl-hidden-dim 2048 \
   --swav-feat-dim 128 \

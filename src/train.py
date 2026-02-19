@@ -221,6 +221,8 @@ def main(argv: Optional[list[str]] = None) -> None:
             num_workers=train_cfg.num_workers,
             pin_memory=True,
             drop_last=False,
+            persistent_workers=train_cfg.num_workers > 0,
+            prefetch_factor=4 if train_cfg.num_workers > 0 else None,
         )
         val_loader = None
         if val_ds is not None:
@@ -231,6 +233,8 @@ def main(argv: Optional[list[str]] = None) -> None:
                 num_workers=train_cfg.num_workers,
                 pin_memory=True,
                 drop_last=False,
+                persistent_workers=train_cfg.num_workers > 0,
+                prefetch_factor=4 if train_cfg.num_workers > 0 else None,
             )
 
         pipeline = ClsPipeline(model=model, num_classes=num_classes, train_cfg=train_cfg, defoca_cfg=defoca_cfg)
@@ -342,6 +346,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         num_workers=pre_cfg.num_workers,
         pin_memory=True,
         drop_last=True,
+        persistent_workers=pre_cfg.num_workers > 0,
+        prefetch_factor=4 if pre_cfg.num_workers > 0 else None,
     )
     pre_pipeline = PretrainPipeline(method=method, pretrain_cfg=pre_cfg)
     for epoch in range(1, pre_cfg.epochs + 1):
@@ -367,6 +373,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         num_workers=train_cfg.num_workers,
         pin_memory=True,
         drop_last=False,
+        persistent_workers=train_cfg.num_workers > 0,
+        prefetch_factor=4 if train_cfg.num_workers > 0 else None,
     )
     val_eval_loader = DataLoader(
         eval_val_ds,
@@ -375,6 +383,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         num_workers=train_cfg.num_workers,
         pin_memory=True,
         drop_last=False,
+        persistent_workers=train_cfg.num_workers > 0,
+        prefetch_factor=4 if train_cfg.num_workers > 0 else None,
     )
 
     evaluator = PretrainEvaluator(encoder=method.encoder, device=args.device)
