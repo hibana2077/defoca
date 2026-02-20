@@ -6,11 +6,13 @@ This repo contains a minimal classification pipeline for UFGVC datasets with **D
 
 Train baseline (no DEFOCA):
 
-`python -m src.train --dataset soybean --root ./data --epochs 10`
+`python3 -m src.train --dataset soybean --root ./data --epochs 10`
 
 Train with DEFOCA (multi-view, train-only):
 
-`python -m src.train --dataset soybean --root ./data --defoca --P 4 --ratio 0.25 --sigma 1.0 --strategy contiguous --V 8`
+`python3 -m src.train --dataset soybean --root ./data --defoca --P 4 --ratio 0.25 --sigma 1.0 --strategy contiguous --V 8`
+
+`python3 -m src.snr --dataset soybean --split test --n-samples 256 --device cuda`
 
 Notes:
 
