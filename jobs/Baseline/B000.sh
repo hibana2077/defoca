@@ -5,7 +5,7 @@
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
-#PBS -l mem=32GB
+#PBS -l mem=20GB
 #PBS -l walltime=06:00:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
@@ -64,10 +64,10 @@ LOG_FILE="$LOG_DIR/B000_idx${IDX}_seed${SEED}.log"
 python3 -u -m src.train \
   --task pretrain \
   --ssl-method simclr \
-  --dataset cifar100 --root ./data \
+  --dataset tiny_imagenet --root ./data \
   --arch resnet18 \
-  --img-size 224 \
-  --epochs 20 \
+  --img-size 64 \
+  --epochs 300 \
   --batch-size 256 \
   --num-workers 10 \
   --lr 3e-4 --weight-decay 1e-4 \

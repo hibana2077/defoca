@@ -64,9 +64,9 @@ LOG_FILE="$LOG_DIR/B001_idx${IDX}_seed${SEED}.log"
 python3 -u -m src.train \
   --task pretrain \
   --ssl-method barlow \
-  --dataset cifar100 --root ./data \
+  --dataset tiny_imagenet --root ./data \
   --arch resnet18 \
-  --img-size 224 \
+  --img-size 64 \
   --epochs 300 \
   --batch-size 256 \
   --num-workers 8 \
