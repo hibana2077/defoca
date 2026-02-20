@@ -630,18 +630,24 @@ def main(argv: Optional[list[str]] = None) -> None:
     eval_interval = args.eval_interval
     last_eval_epoch = 0
     best_loss = math.inf
-    _ensure_dir(str(args.ckpt_dir))
-    best_encoder_path = os.path.join(str(args.ckpt_dir), str(args.best_encoder_name))
+    best_encoder_path: str | None = None
+    if args.transfer_eval:
+        _ensure_dir(str(args.ckpt_dir))
+        best_encoder_path = os.path.join(str(args.ckpt_dir), str(args.best_encoder_name))
     for epoch in range(1, pre_cfg.epochs + 1):
         m = pre_pipeline.train_one_epoch(pre_loader, epoch=epoch)
         print(f"epoch={epoch} pretrain loss={m['loss']:.4f}")
 
         # Save best-loss encoder checkpoint (CPU) for later transfer evaluation.
-        loss_v = float(m.get("loss", math.inf))
-        if loss_v < best_loss:
-            best_loss = loss_v
-            _save_encoder_ckpt(encoder=method.encoder, path=best_encoder_path)
-            print(f"[DEBUG] new best pretrain loss={best_loss:.6f} -> saved encoder to {best_encoder_path}", flush=True)
+        if best_encoder_path is not None:
+            loss_v = float(m.get("loss", math.inf))
+            if loss_v < best_loss:
+                best_loss = loss_v
+                _save_encoder_ckpt(encoder=method.encoder, path=best_encoder_path)
+                print(
+                    f"[DEBUG] new best pretrain loss={best_loss:.6f} -> saved encoder to {best_encoder_path}",
+                    flush=True,
+                )
 
         if eval_interval > 0 and epoch % eval_interval == 0:
             _run_eval(epoch)
@@ -655,6 +661,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     if args.transfer_eval:
         if args.transfer_dataset is None:
             raise ValueError("--transfer-eval requires --transfer-dataset")
+        if best_encoder_path is None:
+            raise RuntimeError("Internal error: best_encoder_path is None while --transfer-eval is enabled")
         if not os.path.exists(best_encoder_path):
             raise RuntimeError(f"Best encoder checkpoint not found: {best_encoder_path}")
 
