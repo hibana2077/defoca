@@ -6,7 +6,7 @@
 #PBS -l ngpus=1
 #PBS -l ncpus=12
 #PBS -l mem=16GB
-#PBS -l walltime=06:00:00
+#PBS -l walltime=00:60:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
 
@@ -67,7 +67,7 @@ python3 -u -m src.train \
   --dataset cifar100 --root ./data \
   --arch resnet18 \
   --img-size 224 \
-  --epochs 300 \
+  --epochs 20 \
   --batch-size 256 \
   --num-workers 10 \
   --lr 3e-4 --weight-decay 1e-4 \
