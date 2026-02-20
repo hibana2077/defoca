@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from typing import Optional
+import os
 import sys
+import math
 import time
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -19,6 +22,72 @@ from .cl.ssl_methods import BarlowTwins, SimCLR, SwAV, VICReg
 from .cl.ssl_models import ResNet18Encoder, SwAVConfig, TimmEncoder
 from .pipeline import PretrainPipeline
 from .ufgvc import UFGVCDataset
+
+
+def _ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def _save_encoder_ckpt(*, encoder: torch.nn.Module, path: str) -> None:
+    """Save encoder weights to disk on CPU to avoid GPU memory growth."""
+    state = {k: v.detach().cpu() for k, v in encoder.state_dict().items()}
+    torch.save(state, path)
+
+
+@torch.no_grad()
+def _extract_features_memmap(
+    *,
+    encoder: torch.nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    out_dir: str,
+    prefix: str,
+    norm_mean: tuple[float, float, float],
+    norm_std: tuple[float, float, float],
+    max_samples: int | None,
+) -> tuple[np.memmap, np.memmap]:
+    """Extract features to disk-backed memmap arrays (RAM-safe)."""
+    encoder.eval()
+    feat_dim = int(getattr(encoder, "out_dim", 0))
+    if feat_dim <= 0:
+        raise RuntimeError("encoder.out_dim is missing/invalid; cannot size feature memmap")
+
+    n_total = len(loader.dataset)
+    if max_samples is not None:
+        n_total = min(n_total, int(max_samples))
+    if n_total <= 0:
+        raise RuntimeError("No samples for feature extraction")
+
+    _ensure_dir(out_dir)
+    x_path = os.path.join(out_dir, f"{prefix}.x.f32.mmap")
+    y_path = os.path.join(out_dir, f"{prefix}.y.i64.mmap")
+
+    X = np.memmap(x_path, dtype="float32", mode="w+", shape=(n_total, feat_dim))
+    y = np.memmap(y_path, dtype="int64", mode="w+", shape=(n_total,))
+
+    mean_t = torch.tensor(norm_mean, device=device, dtype=torch.float32).view(1, 3, 1, 1)
+    std_t = torch.tensor(norm_std, device=device, dtype=torch.float32).view(1, 3, 1, 1)
+
+    idx = 0
+    for images, labels in loader:
+        if idx >= n_total:
+            break
+
+        b = int(labels.size(0))
+        take = min(b, n_total - idx)
+
+        images = images.to(device, non_blocking=True)
+        images = (images - mean_t) / std_t
+        feats = encoder(images).detach().to("cpu", dtype=torch.float32)
+
+        X[idx : idx + take] = feats[:take].contiguous().numpy()
+        y[idx : idx + take] = labels[:take].detach().cpu().numpy().astype(np.int64, copy=False)
+
+        idx += take
+
+    X.flush()
+    y.flush()
+    return X, y
 
 
 def build_transforms(img_size: int):
@@ -191,6 +260,54 @@ def main(argv: Optional[list[str]] = None) -> None:
         type=int,
         default=2,
         help="Prefetch factor for periodic SSL evaluation (only used when eval-num-workers > 0)",
+    )
+
+    # Transfer / downstream evaluation after SSL pretrain
+    p.add_argument(
+        "--transfer-eval",
+        action="store_true",
+        help="After SSL pretraining, load best-loss encoder and evaluate on a different dataset using simple classifiers",
+    )
+    p.add_argument(
+        "--transfer-dataset",
+        type=str,
+        default=None,
+        help="Dataset name for transfer evaluation (must be different if you want cross-dataset eval)",
+    )
+    p.add_argument("--transfer-root", type=str, default=None, help="Root dir for transfer dataset (default: --root)")
+    p.add_argument("--transfer-train-split", type=str, default="train")
+    p.add_argument("--transfer-test-split", type=str, default="test")
+    p.add_argument(
+        "--transfer-batch-size",
+        type=int,
+        default=None,
+        help="Batch size for feature extraction in transfer eval (default: --eval-batch-size or --batch-size)",
+    )
+    p.add_argument("--transfer-num-workers", type=int, default=0)
+    p.add_argument(
+        "--transfer-prefetch-factor",
+        type=int,
+        default=2,
+        help="Prefetch factor for transfer eval feature extraction (only used when transfer-num-workers > 0)",
+    )
+    p.add_argument(
+        "--transfer-max-train",
+        type=int,
+        default=None,
+        help="Optional cap for number of transfer-train samples used to fit classifiers",
+    )
+    p.add_argument(
+        "--transfer-max-test",
+        type=int,
+        default=None,
+        help="Optional cap for number of transfer-test samples used to evaluate classifiers",
+    )
+    p.add_argument("--ckpt-dir", type=str, default="./checkpoints", help="Directory to save best encoder checkpoint")
+    p.add_argument(
+        "--best-encoder-name",
+        type=str,
+        default="best_pretrain_encoder.pt",
+        help="Filename for best-loss encoder checkpoint (saved under --ckpt-dir)",
     )
 
     args = p.parse_args(argv)
@@ -512,9 +629,20 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     eval_interval = args.eval_interval
     last_eval_epoch = 0
+    best_loss = math.inf
+    _ensure_dir(str(args.ckpt_dir))
+    best_encoder_path = os.path.join(str(args.ckpt_dir), str(args.best_encoder_name))
     for epoch in range(1, pre_cfg.epochs + 1):
         m = pre_pipeline.train_one_epoch(pre_loader, epoch=epoch)
         print(f"epoch={epoch} pretrain loss={m['loss']:.4f}")
+
+        # Save best-loss encoder checkpoint (CPU) for later transfer evaluation.
+        loss_v = float(m.get("loss", math.inf))
+        if loss_v < best_loss:
+            best_loss = loss_v
+            _save_encoder_ckpt(encoder=method.encoder, path=best_encoder_path)
+            print(f"[DEBUG] new best pretrain loss={best_loss:.6f} -> saved encoder to {best_encoder_path}", flush=True)
+
         if eval_interval > 0 and epoch % eval_interval == 0:
             _run_eval(epoch)
             last_eval_epoch = epoch
@@ -522,6 +650,170 @@ def main(argv: Optional[list[str]] = None) -> None:
     # always evaluate at the final epoch if not already done
     if last_eval_epoch != pre_cfg.epochs:
         _run_eval(pre_cfg.epochs)
+
+    # ============ transfer / downstream eval on different dataset ============
+    if args.transfer_eval:
+        if args.transfer_dataset is None:
+            raise ValueError("--transfer-eval requires --transfer-dataset")
+        if not os.path.exists(best_encoder_path):
+            raise RuntimeError(f"Best encoder checkpoint not found: {best_encoder_path}")
+
+        print(f"[DEBUG transfer] loading best encoder from {best_encoder_path}", flush=True)
+        state = torch.load(best_encoder_path, map_location="cpu")
+        method.encoder.load_state_dict(state)
+        method.encoder.to(torch.device(args.device))
+
+        transfer_root = str(args.root if args.transfer_root is None else args.transfer_root)
+        transfer_train_ds = try_build_split(
+            dataset_name=str(args.transfer_dataset),
+            root=transfer_root,
+            split=str(args.transfer_train_split),
+            transform=val_t,
+            download=True,
+        )
+        if transfer_train_ds is None:
+            raise RuntimeError(f"Transfer dataset {args.transfer_dataset} has no '{args.transfer_train_split}' split")
+
+        transfer_test_ds = try_build_split(
+            dataset_name=str(args.transfer_dataset),
+            root=transfer_root,
+            split=str(args.transfer_test_split),
+            transform=val_t,
+            download=True,
+        )
+        if transfer_test_ds is None and str(args.transfer_test_split) != "val":
+            transfer_test_ds = try_build_split(
+                dataset_name=str(args.transfer_dataset),
+                root=transfer_root,
+                split="val",
+                transform=val_t,
+                download=True,
+            )
+        if transfer_test_ds is None:
+            raise RuntimeError(
+                f"Transfer dataset {args.transfer_dataset} has no '{args.transfer_test_split}' (or 'val') split"
+            )
+
+        transfer_num_classes = len(transfer_train_ds.classes)
+        transfer_bs = int(
+            (args.transfer_batch_size)
+            if args.transfer_batch_size is not None
+            else (eval_batch_size if "eval_batch_size" in locals() else args.batch_size)
+        )
+        transfer_nw = int(args.transfer_num_workers)
+        transfer_pf = int(args.transfer_prefetch_factor)
+        transfer_pin = bool(torch.cuda.is_available())
+
+        transfer_train_loader = DataLoader(
+            transfer_train_ds,
+            batch_size=transfer_bs,
+            shuffle=False,
+            num_workers=transfer_nw,
+            pin_memory=transfer_pin,
+            drop_last=False,
+            persistent_workers=False,
+            prefetch_factor=transfer_pf if transfer_nw > 0 else None,
+        )
+        transfer_test_loader = DataLoader(
+            transfer_test_ds,
+            batch_size=transfer_bs,
+            shuffle=False,
+            num_workers=transfer_nw,
+            pin_memory=transfer_pin,
+            drop_last=False,
+            persistent_workers=False,
+            prefetch_factor=transfer_pf if transfer_nw > 0 else None,
+        )
+
+        print(
+            f"[DEBUG transfer] extracting features: dataset={args.transfer_dataset}  "
+            f"train={len(transfer_train_ds)} test={len(transfer_test_ds)}  "
+            f"feat_dim={getattr(method.encoder, 'out_dim', None)}",
+            flush=True,
+        )
+
+        device = torch.device(args.device)
+        # Use ImageNet normalization (same as pipelines) without importing extra helpers.
+        norm_mean = (0.485, 0.456, 0.406)
+        norm_std = (0.229, 0.224, 0.225)
+        out_dir = os.path.join(str(args.ckpt_dir), "transfer_features")
+
+        Xtr, ytr = _extract_features_memmap(
+            encoder=method.encoder,
+            loader=transfer_train_loader,
+            device=device,
+            out_dir=out_dir,
+            prefix=f"{args.transfer_dataset}_train",
+            norm_mean=norm_mean,
+            norm_std=norm_std,
+            max_samples=args.transfer_max_train,
+        )
+        Xte, yte = _extract_features_memmap(
+            encoder=method.encoder,
+            loader=transfer_test_loader,
+            device=device,
+            out_dir=out_dir,
+            prefix=f"{args.transfer_dataset}_test",
+            norm_mean=norm_mean,
+            norm_std=norm_std,
+            max_samples=args.transfer_max_test,
+        )
+
+        # Fit simple classifiers on frozen features.
+        from sklearn.metrics import accuracy_score, f1_score
+        from sklearn.svm import LinearSVC
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.neural_network import MLPClassifier
+
+        results: dict[str, dict[str, float]] = {}
+
+        def _eval_model(name: str, clf) -> None:
+            clf.fit(Xtr, ytr)
+            pred = clf.predict(Xte)
+            results[name] = {
+                "acc": float(accuracy_score(yte, pred)),
+                "f1": float(f1_score(yte, pred, average="macro")),
+            }
+
+        # (1) linear SVM
+        _eval_model(
+            "LinearSVC",
+            LinearSVC(C=1.0, max_iter=5000, random_state=int(args.seed)),
+        )
+        # (2) multinomial / OvR logistic regression
+        _eval_model(
+            "LogReg",
+            LogisticRegression(
+                C=1.0,
+                max_iter=1000,
+                n_jobs=-1,
+                multi_class="auto",
+                solver="saga",
+                random_state=int(args.seed),
+            ),
+        )
+        # (3) 2-layer MLP (one hidden layer + output)
+        _eval_model(
+            "MLP(1hidden)",
+            MLPClassifier(
+                hidden_layer_sizes=(512,),
+                activation="relu",
+                alpha=1e-4,
+                learning_rate_init=1e-3,
+                max_iter=50,
+                early_stopping=True,
+                n_iter_no_change=5,
+                random_state=int(args.seed),
+            ),
+        )
+
+        print(
+            f"[transfer eval] dataset={args.transfer_dataset} classes={transfer_num_classes} "
+            f"train_n={Xtr.shape[0]} test_n={Xte.shape[0]}",
+            flush=True,
+        )
+        for k, v in results.items():
+            print(f"[transfer eval] {k}: acc={v['acc']:.4f} f1={v['f1']:.4f}", flush=True)
 
 
 if __name__ == "__main__":
