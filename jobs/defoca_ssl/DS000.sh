@@ -76,4 +76,5 @@ python3 -u -m src.train \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed "$SEED" --device cuda \
   --eval-batch-size 16 \
+  --transfer-eval --transfer-dataset cub_200_2011 --transfer-batch-size 16 \
   >> "$LOG_FILE" 2>&1
