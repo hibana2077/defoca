@@ -74,5 +74,6 @@ python3 -u -m src.train \
   --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --eval-batch-size 16 \
+  --transfer-eval --transfer-dataset cub_200_2011 --transfer-batch-size 16 \
   --seed "$SEED" --device cuda \
   >> "$LOG_FILE" 2>&1
