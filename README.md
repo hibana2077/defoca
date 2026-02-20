@@ -14,6 +14,8 @@ Train with DEFOCA (multi-view, train-only):
 
 `python3 -m src.snr --dataset soybean --split test --n-samples 256 --device cuda`
 
+`python3 -m src.train --task pretrain --dataset soybean --ssl-method simclr --epochs 100 --transfer-eval --transfer-dataset cifar10`
+
 Notes:
 
 - Global augmentations (resize/flip/jitter) are applied first, then DEFOCA patch blur, then normalization.
