@@ -155,6 +155,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--linear-lr", type=float, default=1e-2)
     p.add_argument("--knn-k", type=int, default=20)
     p.add_argument("--knn-t", type=float, default=0.1)
+    p.add_argument("--eval-interval", type=int, default=5,
+                   help="Run linear/kNN/clustering eval every N epochs during SSL pretraining (0 = end only)")
 
     args = p.parse_args(argv)
 
@@ -401,17 +403,7 @@ def main(argv: Optional[list[str]] = None) -> None:
               f"reserved={torch.cuda.memory_reserved()/1024**2:.1f} MB", flush=True)
     # -------------------------------------------------------
 
-    pre_pipeline = PretrainPipeline(method=method, pretrain_cfg=pre_cfg)
-    print(f"[DEBUG] Method moved to device. Starting pretrain loop.", flush=True)
-    if torch.cuda.is_available():
-        print(f"[DEBUG] GPU mem after model init: "
-              f"allocated={torch.cuda.memory_allocated()/1024**2:.1f} MB  "
-              f"reserved={torch.cuda.memory_reserved()/1024**2:.1f} MB", flush=True)
-    for epoch in range(1, pre_cfg.epochs + 1):
-        m = pre_pipeline.train_one_epoch(pre_loader, epoch=epoch)
-        print(f"epoch={epoch} pretrain loss={m['loss']:.4f}")
-
-    # ============ evaluation ============
+    # ============ evaluation setup (built once, reused every eval_interval epochs) ============
     eval_cfg = EvalConfig(
         linear_epochs=args.linear_epochs,
         linear_lr=args.linear_lr,
@@ -443,12 +435,33 @@ def main(argv: Optional[list[str]] = None) -> None:
         persistent_workers=train_cfg.num_workers > 0,
         prefetch_factor=4 if train_cfg.num_workers > 0 else None,
     )
-
     evaluator = PretrainEvaluator(encoder=method.encoder, device=args.device)
-    lin = evaluator.linear_eval(train_loader=train_eval_loader, val_loader=val_eval_loader, num_classes=num_classes, cfg=eval_cfg)
-    knn = evaluator.knn_eval(train_loader=train_eval_loader, val_loader=val_eval_loader, cfg=eval_cfg)
-    clu = evaluator.clustering_eval(loader=val_eval_loader, num_classes=num_classes)
-    print("eval:", {**lin, **knn, **clu})
+
+    def _run_eval(epoch: int) -> None:
+        lin = evaluator.linear_eval(train_loader=train_eval_loader, val_loader=val_eval_loader, num_classes=num_classes, cfg=eval_cfg)
+        knn = evaluator.knn_eval(train_loader=train_eval_loader, val_loader=val_eval_loader, cfg=eval_cfg)
+        clu = evaluator.clustering_eval(loader=val_eval_loader, num_classes=num_classes)
+        print(f"epoch={epoch} eval:", {**lin, **knn, **clu})
+
+    pre_pipeline = PretrainPipeline(method=method, pretrain_cfg=pre_cfg)
+    print(f"[DEBUG] Method moved to device. Starting pretrain loop.", flush=True)
+    if torch.cuda.is_available():
+        print(f"[DEBUG] GPU mem after model init: "
+              f"allocated={torch.cuda.memory_allocated()/1024**2:.1f} MB  "
+              f"reserved={torch.cuda.memory_reserved()/1024**2:.1f} MB", flush=True)
+
+    eval_interval = args.eval_interval
+    last_eval_epoch = 0
+    for epoch in range(1, pre_cfg.epochs + 1):
+        m = pre_pipeline.train_one_epoch(pre_loader, epoch=epoch)
+        print(f"epoch={epoch} pretrain loss={m['loss']:.4f}")
+        if eval_interval > 0 and epoch % eval_interval == 0:
+            _run_eval(epoch)
+            last_eval_epoch = epoch
+
+    # always evaluate at the final epoch if not already done
+    if last_eval_epoch != pre_cfg.epochs:
+        _run_eval(pre_cfg.epochs)
 
 
 if __name__ == "__main__":
