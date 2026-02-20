@@ -115,6 +115,12 @@ class UFGVCDataset(Dataset):
             'url': 'https://huggingface.co/datasets/hibana2077/CV-dataset-all-in-parquet/resolve/main/datasets/cifar10.parquet?download=true',
             'filename': 'cifar10.parquet',
             'description': 'CIFAR-10 for general object classification'
+        },
+        'tiny_imagenet': {
+            'format': 'hf',
+            'hf_name': 'Maysee/tiny-imagenet',
+            'split_map': {'val': 'valid'},
+            'description': 'Tiny ImageNet with 200 classes, images downsized to 64x64'
         }
 
     }
@@ -141,21 +147,59 @@ class UFGVCDataset(Dataset):
         self.target_transform = target_transform
         self.return_index = return_index
         
-        # Dataset file info
-        self.url = self.dataset_config['url']
-        self.filename = self.dataset_config['filename']
-        self.filepath = self.root / self.filename
+        self._is_hf = self.dataset_config.get('format') == 'hf'
+
+        if self._is_hf:
+            # HuggingFace datasets handle their own caching — no manual download needed.
+            self._load_hf_data()
+        else:
+            # Dataset file info
+            self.url = self.dataset_config['url']
+            self.filename = self.dataset_config['filename']
+            self.filepath = self.root / self.filename
+
+            # Ensure root directory exists
+            self.root.mkdir(parents=True, exist_ok=True)
+
+            # Download if needed
+            if download and not self.filepath.exists():
+                self._download()
+
+            # Load and filter data
+            self._load_data()
         
-        # Ensure root directory exists
-        self.root.mkdir(parents=True, exist_ok=True)
-        
-        # Download if needed
-        if download and not self.filepath.exists():
-            self._download()
-        
-        # Load and filter data
-        self._load_data()
-        
+    def _load_hf_data(self):
+        """Load data from a HuggingFace dataset."""
+        try:
+            from datasets import load_dataset as hf_load_dataset
+        except ImportError:
+            raise ImportError(
+                "The 'datasets' package is required for HuggingFace-backed datasets. "
+                "Install it with: pip install datasets"
+            )
+
+        hf_name = self.dataset_config['hf_name']
+        split_map = self.dataset_config.get('split_map', {})
+        hf_split = split_map.get(self.split, self.split)
+
+        print(f"Loading {self.dataset_name} from HuggingFace ({hf_name}, split='{hf_split}')...")
+        self._hf_dataset = hf_load_dataset(hf_name, split=hf_split)
+
+        # Derive class list from the ClassLabel feature when available
+        label_feature = self._hf_dataset.features.get('label')
+        if hasattr(label_feature, 'names'):
+            self.classes = list(label_feature.names)
+        else:
+            n_classes = max(self._hf_dataset['label']) + 1
+            self.classes = [str(i) for i in range(n_classes)]
+
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
+
+        print(f"Dataset: {self.dataset_name}")
+        print(f"Split: {self.split} (hf split: '{hf_split}')")
+        print(f"Samples: {len(self._hf_dataset)}")
+        print(f"Classes: {len(self.classes)}")
+
     def _download(self):
         """Download the dataset file"""
         print(f"Downloading {self.dataset_name} dataset...")
@@ -243,33 +287,44 @@ class UFGVCDataset(Dataset):
             raise RuntimeError(f"Failed to load dataset {self.dataset_name}: {e}")
     
     def __len__(self) -> int:
+        if self._is_hf:
+            return len(self._hf_dataset)
         return len(self.data)
     
     def __getitem__(self, idx: int) -> Union[Tuple[Any, Any], Tuple[Any, Any, int]]:
-        if idx >= len(self.data):
-            raise IndexError(f"Index {idx} out of range for dataset of size {len(self.data)}")
-        
-        # Get row data
-        row = self.data.iloc[idx]
-        
-        # Load image from bytes
-        image_bytes = row['image']
-        try:
-            image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
-        except Exception as e:
-            raise RuntimeError(f"Failed to load image at index {idx}: {e}")
-        
-        # Get label - use class_name to ensure consistency with self.classes
-        class_name = row['class_name']
-        label = self.class_to_idx[class_name]
-        
+        if idx >= len(self):
+            raise IndexError(f"Index {idx} out of range for dataset of size {len(self)}")
+
+        if self._is_hf:
+            item = self._hf_dataset[idx]
+            image = item['image']
+            if not isinstance(image, Image.Image):
+                image = Image.open(io.BytesIO(image)).convert('RGB')
+            else:
+                image = image.convert('RGB')
+            label = item['label']
+        else:
+            # Get row data
+            row = self.data.iloc[idx]
+
+            # Load image from bytes
+            image_bytes = row['image']
+            try:
+                image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+            except Exception as e:
+                raise RuntimeError(f"Failed to load image at index {idx}: {e}")
+
+            # Get label - use class_name to ensure consistency with self.classes
+            class_name = row['class_name']
+            label = self.class_to_idx[class_name]
+
         # Apply transforms
         if self.transform:
             image = self.transform(image)
-        
+
         if self.target_transform:
             label = self.target_transform(label)
-        
+
         if self.return_index:
             return image, label, idx
         return image, label
@@ -279,16 +334,35 @@ class UFGVCDataset(Dataset):
 
         This does NOT decode images and is safe to call for alpha statistics.
         """
+        if self._is_hf:
+            return torch.tensor(self._hf_dataset['label'], dtype=torch.long)
         class_names = self.data["class_name"].tolist()
         labels = [self.class_to_idx[name] for name in class_names]
         return torch.tensor(labels, dtype=torch.long)
     
     def get_class_name(self, idx: int) -> str:
         """Get class name for a given index"""
+        if self._is_hf:
+            label = self._hf_dataset[idx]['label']
+            return self.classes[label]
         return self.data.iloc[idx]["class_name"]
     
     def get_dataset_info(self) -> dict:
         """Get comprehensive information about the dataset"""
+        if self._is_hf:
+            return {
+                'dataset_name': self.dataset_name,
+                'description': self.dataset_config['description'],
+                'current_split': self.split,
+                'current_samples': len(self._hf_dataset),
+                'current_classes': len(self.classes),
+                'total_samples': None,  # would require loading all splits
+                'total_classes': len(self.classes),
+                'split_distribution': None,
+                'classes': self.classes,
+                'hf_name': self.dataset_config['hf_name'],
+            }
+
         # Get split distribution
         full_df = pd.read_parquet(self.filepath)
 
@@ -300,7 +374,7 @@ class UFGVCDataset(Dataset):
 
         split_counts = full_df['split'].value_counts().to_dict()
         total_classes = len(full_df['class_name'].unique())
-        
+
         return {
             'dataset_name': self.dataset_name,
             'description': self.dataset_config['description'],
@@ -316,6 +390,16 @@ class UFGVCDataset(Dataset):
     
     def get_sample_info(self, idx: int) -> dict:
         """Get detailed information about a specific sample"""
+        if self._is_hf:
+            item = self._hf_dataset[idx]
+            label = item['label']
+            return {
+                'dataset': self.dataset_name,
+                'index': idx,
+                'label': label,
+                'class_name': self.classes[label],
+                'split': self.split,
+            }
         row = self.data.iloc[idx]
         return {
             'dataset': self.dataset_name,
