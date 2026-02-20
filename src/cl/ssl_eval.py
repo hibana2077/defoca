@@ -29,21 +29,30 @@ class PretrainEvaluator:
         self.device = torch.device(device)
         self.norm_cfg = norm_cfg
         self.encoder.to(self.device)
+        self._feature_dim: Optional[int] = None
+        out_dim = getattr(encoder, "out_dim", None)
+        if isinstance(out_dim, int) and out_dim > 0:
+            self._feature_dim = int(out_dim)
 
     @torch.no_grad()
-    def _features(self, loader: DataLoader) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _features(self, loader: DataLoader, *, max_samples: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         self.encoder.eval()
         feats, ys = [], []
+        seen = 0
         for x, y in loader:
             x = normalize_tensor(x.to(self.device, non_blocking=True), mean=self.norm_cfg.mean, std=self.norm_cfg.std)
             f = self.encoder(x)
             feats.append(f.detach().cpu())
             ys.append(y.detach().cpu())
+            seen += int(y.size(0))
+            if max_samples is not None and seen >= int(max_samples):
+                break
         return torch.cat(feats, dim=0), torch.cat(ys, dim=0)
 
     def linear_eval(self, *, train_loader: DataLoader, val_loader: DataLoader, num_classes: int, cfg: EvalConfig) -> Dict[str, float]:
         self.encoder.eval()
-        head = nn.Linear(self._infer_dim(train_loader), num_classes).to(self.device)
+        feat_dim = self._feature_dim if self._feature_dim is not None else self._infer_dim(train_loader)
+        head = nn.Linear(int(feat_dim), num_classes).to(self.device)
         opt = torch.optim.SGD(head.parameters(), lr=cfg.linear_lr, momentum=0.9)
 
         for _ in range(int(cfg.linear_epochs)):
@@ -72,10 +81,7 @@ class PretrainEvaluator:
         return {"linear_acc": correct / max(1, total)}
 
     def knn_eval(self, *, train_loader: DataLoader, val_loader: DataLoader, cfg: EvalConfig) -> Dict[str, float]:
-        train_f, train_y = self._features(train_loader)
-        if train_f.size(0) > cfg.max_knn_train:
-            train_f = train_f[: cfg.max_knn_train]
-            train_y = train_y[: cfg.max_knn_train]
+        train_f, train_y = self._features(train_loader, max_samples=int(cfg.max_knn_train))
 
         train_f = F.normalize(train_f, dim=1)
         train_y = train_y.long()

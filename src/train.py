@@ -108,6 +108,23 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--num-workers", type=int, default=4)
+    p.add_argument(
+        "--prefetch-factor",
+        type=int,
+        default=2,
+        help="DataLoader prefetch_factor (only used when num_workers > 0)",
+    )
+    pw_group = p.add_mutually_exclusive_group()
+    pw_group.add_argument(
+        "--persistent-workers",
+        action="store_true",
+        help="Enable DataLoader persistent_workers when num_workers > 0",
+    )
+    pw_group.add_argument(
+        "--no-persistent-workers",
+        action="store_true",
+        help="Disable DataLoader persistent_workers",
+    )
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--device", type=str, default=("cuda" if torch.cuda.is_available() else "cpu"))
@@ -157,8 +174,39 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--knn-t", type=float, default=0.1)
     p.add_argument("--eval-interval", type=int, default=5,
                    help="Run linear/kNN/clustering eval every N epochs during SSL pretraining (0 = end only)")
+    p.add_argument(
+        "--eval-batch-size",
+        type=int,
+        default=None,
+        help="Batch size for periodic SSL evaluation (default: same as --batch-size)",
+    )
+    p.add_argument(
+        "--eval-num-workers",
+        type=int,
+        default=0,
+        help="Num workers for periodic SSL evaluation (default: 0 to reduce RAM spikes)",
+    )
+    p.add_argument(
+        "--eval-prefetch-factor",
+        type=int,
+        default=2,
+        help="Prefetch factor for periodic SSL evaluation (only used when eval-num-workers > 0)",
+    )
 
     args = p.parse_args(argv)
+
+    # DataLoader behavior
+    prefetch_factor = int(args.prefetch_factor)
+    if prefetch_factor <= 0:
+        raise ValueError("--prefetch-factor must be >= 1")
+
+    if args.no_persistent_workers:
+        persistent_workers = False
+    elif args.persistent_workers:
+        persistent_workers = args.num_workers > 0
+    else:
+        # preserve current behavior by default
+        persistent_workers = args.num_workers > 0
 
     torch.manual_seed(args.seed)
     gen = torch.Generator()
@@ -235,15 +283,16 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     if args.task == "supervised":
         model = timm.create_model(args.arch, pretrained=True, num_classes=num_classes)
+        pin_memory = bool(torch.cuda.is_available())
         train_loader = DataLoader(
             train_ds,
             batch_size=train_cfg.batch_size,
             shuffle=True,
             num_workers=train_cfg.num_workers,
-            pin_memory=True,
+            pin_memory=pin_memory,
             drop_last=False,
-            persistent_workers=train_cfg.num_workers > 0,
-            prefetch_factor=4 if train_cfg.num_workers > 0 else None,
+            persistent_workers=persistent_workers,
+            prefetch_factor=prefetch_factor if train_cfg.num_workers > 0 else None,
         )
         val_loader = None
         if val_ds is not None:
@@ -252,10 +301,10 @@ def main(argv: Optional[list[str]] = None) -> None:
                 batch_size=train_cfg.batch_size,
                 shuffle=False,
                 num_workers=train_cfg.num_workers,
-                pin_memory=True,
+                pin_memory=pin_memory,
                 drop_last=False,
-                persistent_workers=train_cfg.num_workers > 0,
-                prefetch_factor=4 if train_cfg.num_workers > 0 else None,
+                persistent_workers=persistent_workers,
+                prefetch_factor=prefetch_factor if train_cfg.num_workers > 0 else None,
             )
 
         pipeline = ClsPipeline(model=model, num_classes=num_classes, train_cfg=train_cfg, defoca_cfg=defoca_cfg)
@@ -369,16 +418,22 @@ def main(argv: Optional[list[str]] = None) -> None:
         method = SwAV(encoder=encoder, feature_dim=encoder.out_dim, cfg=swcfg, hidden_dim=args.ssl_hidden_dim)
 
     print(f"[DEBUG] ssl_ds type={type(ssl_ds).__name__}  len={len(ssl_ds)}", flush=True)
-    print(f"[DEBUG] DataLoader: batch_size={pre_cfg.batch_size}  num_workers={pre_cfg.num_workers}  prefetch_factor={2 if pre_cfg.num_workers > 0 else None}", flush=True)
+    print(
+        f"[DEBUG] DataLoader: batch_size={pre_cfg.batch_size}  num_workers={pre_cfg.num_workers}  "
+        f"prefetch_factor={prefetch_factor if pre_cfg.num_workers > 0 else None}  "
+        f"persistent_workers={persistent_workers}",
+        flush=True,
+    )
+    pin_memory = bool(torch.cuda.is_available())
     pre_loader = DataLoader(
         ssl_ds,
         batch_size=pre_cfg.batch_size,
         shuffle=True,
         num_workers=pre_cfg.num_workers,
-        pin_memory=True,
+        pin_memory=pin_memory,
         drop_last=True,
-        persistent_workers=pre_cfg.num_workers > 0,
-        prefetch_factor=2 if pre_cfg.num_workers > 0 else None,
+        persistent_workers=persistent_workers,
+        prefetch_factor=prefetch_factor if pre_cfg.num_workers > 0 else None,
     )
 
     # ---- DataLoader timing benchmark (first 5 batches) ----
@@ -415,25 +470,30 @@ def main(argv: Optional[list[str]] = None) -> None:
     if eval_val_ds is None:
         eval_val_ds = eval_train_ds
 
+    eval_batch_size = int(args.batch_size if args.eval_batch_size is None else args.eval_batch_size)
+    eval_num_workers = int(args.eval_num_workers)
+    eval_prefetch_factor = int(args.eval_prefetch_factor)
+    eval_pin_memory = bool(torch.cuda.is_available())
+
     train_eval_loader = DataLoader(
         eval_train_ds,
-        batch_size=train_cfg.batch_size,
+        batch_size=eval_batch_size,
         shuffle=False,
-        num_workers=train_cfg.num_workers,
-        pin_memory=True,
+        num_workers=eval_num_workers,
+        pin_memory=eval_pin_memory,
         drop_last=False,
-        persistent_workers=train_cfg.num_workers > 0,
-        prefetch_factor=4 if train_cfg.num_workers > 0 else None,
+        persistent_workers=False,
+        prefetch_factor=eval_prefetch_factor if eval_num_workers > 0 else None,
     )
     val_eval_loader = DataLoader(
         eval_val_ds,
-        batch_size=train_cfg.batch_size,
+        batch_size=eval_batch_size,
         shuffle=False,
-        num_workers=train_cfg.num_workers,
-        pin_memory=True,
+        num_workers=eval_num_workers,
+        pin_memory=eval_pin_memory,
         drop_last=False,
-        persistent_workers=train_cfg.num_workers > 0,
-        prefetch_factor=4 if train_cfg.num_workers > 0 else None,
+        persistent_workers=False,
+        prefetch_factor=eval_prefetch_factor if eval_num_workers > 0 else None,
     )
     evaluator = PretrainEvaluator(encoder=method.encoder, device=args.device)
 
