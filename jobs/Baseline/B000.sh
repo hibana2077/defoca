@@ -67,9 +67,9 @@ python3 -u -m src.train \
   --dataset cifar100 --root ./data \
   --arch resnet18 \
   --img-size 224 \
-  --epochs 100 \
+  --epochs 300 \
   --batch-size 256 \
-  --num-workers 8 \
+  --num-workers 10 \
   --lr 3e-4 --weight-decay 1e-4 \
   --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
