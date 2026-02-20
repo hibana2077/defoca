@@ -789,17 +789,25 @@ def main(argv: Optional[list[str]] = None) -> None:
             LinearSVC(C=1.0, max_iter=5000, random_state=int(args.seed)),
         )
         # (2) multinomial / OvR logistic regression
-        _eval_model(
-            "LogReg",
-            LogisticRegression(
+        try:
+            logreg = LogisticRegression(
                 C=1.0,
                 max_iter=1000,
                 n_jobs=-1,
                 multi_class="auto",
                 solver="saga",
                 random_state=int(args.seed),
-            ),
-        )
+            )
+        except TypeError:
+            # Compatibility with older scikit-learn versions that don't accept
+            # some constructor kwargs (e.g., `multi_class`).
+            logreg = LogisticRegression(
+                C=1.0,
+                max_iter=1000,
+                random_state=int(args.seed),
+            )
+
+        _eval_model("LogReg", logreg)
         # (3) 2-layer MLP (one hidden layer + output)
         _eval_model(
             "MLP(1hidden)",
