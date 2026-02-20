@@ -62,7 +62,7 @@ LOG_FILE="$LOG_DIR/DS003_idx${IDX}_seed${SEED}.log"
   echo "==========================="
 } >> "$LOG_FILE"
 
-python3 -m src.train \
+python3 -u -m src.train \
   --task pretrain \
   --ssl-method swav \
   --dataset cifar100 --root ./data \
@@ -86,4 +86,5 @@ python3 -m src.train \
   --defoca-ssl --P 7 --ratio 0.25 --sigma 2.0 --strategy contiguous \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed "$SEED" --device cuda \
+  --eval-batch-size 16 \
   >> "$LOG_FILE" 2>&1

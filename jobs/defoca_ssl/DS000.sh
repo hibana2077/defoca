@@ -6,7 +6,7 @@
 #PBS -l ngpus=1
 #PBS -l ncpus=12
 #PBS -l mem=24GB
-#PBS -l walltime=00:55:00
+#PBS -l walltime=08:00:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
 
@@ -75,4 +75,5 @@ python3 -u -m src.train \
   --defoca-ssl --P 4 --ratio 0.25 --sigma 2.0 --strategy random \
   --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
   --seed "$SEED" --device cuda \
+  --eval-batch-size 16 \
   >> "$LOG_FILE" 2>&1
