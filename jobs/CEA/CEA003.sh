@@ -1,12 +1,12 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuhopper
-#PBS -J 0-4
+#PBS -J 5-9
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
 #PBS -l mem=20GB
-#PBS -l walltime=06:00:00
+#PBS -l walltime=03:00:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
 
@@ -50,9 +50,9 @@ export HF_HUB_OFFLINE=1
 
 cd ../..
 
-LOG_DIR="logs/CEAG"
+LOG_DIR="logs/CEA"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/CEAG000_idx${IDX}_seed${SEED}.log"
+LOG_FILE="$LOG_DIR/CEA003_idx${IDX}_seed${SEED}.log"
 
 {
   echo "===== DEFOCA job start ====="
