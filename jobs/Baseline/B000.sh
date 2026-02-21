@@ -34,6 +34,10 @@ if [[ -z "${LINE:-}" ]]; then
 fi
 
 SEED=$(echo "$LINE" | awk '{print $1}')
+ARCH=$(echo "$LINE" | awk '{print $2}')
+if [[ -z "${ARCH:-}" ]]; then
+  ARCH="resnet18"
+fi
 
 if [[ -z "${SEED:-}" ]]; then
   echo "ERROR: Bad experiment line $LINE_NO in $EXP_FILE (expected: <seed>): $LINE" >&2
@@ -57,23 +61,19 @@ LOG_FILE="$LOG_DIR/B000_idx${IDX}_seed${SEED}.log"
   echo "IDX=$IDX LINE_NO=$LINE_NO"
   echo "EXPERIMENT=$LINE"
   echo "SEED=$SEED"
+  echo "ARCH=$ARCH"
   echo "LOG_FILE=$LOG_FILE"
   echo "==========================="
 } >> "$LOG_FILE"
 
 python3 -u -m src.train \
-  --task pretrain \
-  --ssl-method simclr \
+  --task supervised \
   --dataset tiny_imagenet --root ./data \
-  --arch resnet18 \
+  --arch "$ARCH" \
   --img-size 64 \
   --epochs 300 \
   --batch-size 256 \
   --num-workers 10 \
   --lr 3e-4 --weight-decay 1e-4 \
-  --ssl-proj-dim 128 --ssl-hidden-dim 2048 --ssl-temperature 0.2 \
-  --linear-epochs 20 --linear-lr 1e-2 --knn-k 20 --knn-t 0.1 \
-  --eval-batch-size 16 \
-  --transfer-eval --transfer-dataset cub_200_2011 --transfer-batch-size 16 \
   --seed "$SEED" --device cuda \
   >> "$LOG_FILE" 2>&1

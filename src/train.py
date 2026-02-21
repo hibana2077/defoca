@@ -125,6 +125,29 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--cea-lambda-js", type=float, default=1.0)
     p.add_argument("--cea-lambda-iou", type=float, default=1.0)
 
+    # CEA Version B: evidence-guided gating
+    p.add_argument("--cea-gate", action="store_true", help="Enable evidence-guided gating (Version B)")
+    p.add_argument("--cea-gate-alpha", type=float, default=1.0, help="Gating strength (0 disables effect)")
+    p.add_argument(
+        "--cea-gate-target",
+        type=str,
+        default="auto",
+        choices=["auto", "vit", "cnn"],
+        help="Where to apply gating (auto picks based on model)",
+    )
+    p.add_argument(
+        "--cea-vit-block",
+        type=int,
+        default=-1,
+        help="ViT block index for gating (-1 = middle)",
+    )
+    p.add_argument(
+        "--cea-cnn-stage",
+        type=str,
+        default="layer3",
+        help="CNN stage name for gating (e.g., layer2/layer3/layer4 for ResNet)",
+    )
+
     args = p.parse_args(argv)
 
     # DataLoader behavior
@@ -199,6 +222,11 @@ def main(argv: Optional[list[str]] = None) -> None:
         lambda_align=float(args.cea_lambda_align),
         lambda_js=float(args.cea_lambda_js),
         lambda_iou=float(args.cea_lambda_iou),
+        gate_enabled=bool(args.cea_gate),
+        gate_alpha=float(args.cea_gate_alpha),
+        gate_target=str(args.cea_gate_target),
+        vit_block=int(args.cea_vit_block),
+        cnn_stage=str(args.cea_cnn_stage),
     )
 
     print("TrainConfig:", asdict(train_cfg))
@@ -247,7 +275,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         if bool(args.cea):
             print(
                 f"epoch={epoch} train loss={train_metrics['loss']:.4f} "
-                f"acc={train_metrics['acc']:.4f} align={train_metrics['align']:.4f}"
+                f"acc={train_metrics['acc']:.4f} align={train_metrics['align']:.4f} "
+                f"js={train_metrics['js']:.4f} iou={train_metrics['iou']:.4f}"
             )
         else:
             print(f"epoch={epoch} train loss={train_metrics['loss']:.4f} acc={train_metrics['acc']:.4f}")
