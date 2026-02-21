@@ -207,3 +207,8 @@ marimo/_lsp/
 __marimo__/
 data/soybean_dataset.parquet
 .DS_Store
+
+*.mmap
+*.parquet
+*.json
+*.pt
