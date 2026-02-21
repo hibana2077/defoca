@@ -5,8 +5,8 @@
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
-#PBS -l mem=18GB
-#PBS -l walltime=06:00:00
+#PBS -l mem=12GB
+#PBS -l walltime=03:00:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
 
@@ -71,7 +71,7 @@ python3 -u -m src.train \
   --arch "$ARCH" \
   --img-size 224 \
   --epochs 300 \
-  --batch-size 64 \
+  --batch-size 128 \
   --num-workers 8 \
   --lr 3e-4 --weight-decay 1e-4 \
   --seed "$SEED" --device cuda \
