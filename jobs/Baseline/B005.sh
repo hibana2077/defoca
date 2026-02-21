@@ -71,7 +71,7 @@ python3 -u -m src.train \
   --arch "$ARCH" \
   --img-size 224 \
   --epochs 300 \
-  --batch-size 128 \
+  --batch-size 256 \
   --num-workers 8 \
   --lr 3e-4 --weight-decay 1e-4 \
   --seed "$SEED" --device cuda \
