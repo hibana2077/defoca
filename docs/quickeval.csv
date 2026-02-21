@@ -1,0 +1,13 @@
+code,arch,dataset,defoca,cea,cea-gate,mean-accuracy,std-accuracy
+B000,resnet18,cotton80,n,n,n,0.2021,0.0273
+B001,resnet50,cotton80,n,n,n,0.2658,0.0175
+B002,vit_small_patch16_224.dino,cotton80,n,n,n,
+CEA000,resnet18,cotton80,y,y,n,0.2425,0.0201
+CEA001,resnet50,cotton80,y,y,n,0.3408,0.0054
+CEA002,vit_small_patch16_224.dino,cotton80,y,y,n,
+CEA003,resnet18,cub200,y,y,n,
+CEA004,resnet50,cub200,y,y,n,
+CEA005,vit_small_patch16_224.dino,cub200,y,y,n,
+CEAG000,resnet18,cotton80,y,n,y,
+CEAG001,resnet50,cotton80,y,n,y,
+CEAG002,vit_small_patch16_224.dino,cotton80,y,n,y,
