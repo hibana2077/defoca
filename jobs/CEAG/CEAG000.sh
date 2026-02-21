@@ -76,4 +76,5 @@ python3 -u -m src.train \
   --lr 3e-4 --weight-decay 1e-4 \
   --seed "$SEED" --device cuda \
   --defoca --V 8 --P 4 \
+  --cea-gate \
   >> "$LOG_FILE" 2>&1
