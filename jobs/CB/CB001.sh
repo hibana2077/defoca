@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuhopper
-#PBS -J 0-4
+#PBS -J 5-9
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
