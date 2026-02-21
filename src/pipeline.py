@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Sequence, Tuple, Union
-import time
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -21,17 +20,6 @@ class TrainConfig:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     log_every: int = 50
     flatten_views: bool = True  # (B,V,...) -> (B*V,...)
-
-
-@dataclass(frozen=True)
-class PretrainConfig:
-    epochs: int = 100
-    lr: float = 3e-4
-    weight_decay: float = 1e-4
-    batch_size: int = 256
-    num_workers: int = 4
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    log_every: int = 50
 
 
 @dataclass(frozen=True)
@@ -198,96 +186,3 @@ class ClsPipeline:
             "loss": total_loss / max(1, total),
             "acc": correct / max(1, total),
         }
-
-
-Views = Union[tuple[torch.Tensor, torch.Tensor], Sequence[torch.Tensor]]
-
-
-class PretrainPipeline:
-    def __init__(
-        self,
-        *,
-        method: nn.Module,
-        pretrain_cfg: PretrainConfig,
-        norm_cfg: NormalizeConfig = NormalizeConfig(),
-    ):
-        self.method = method
-        self.pretrain_cfg = pretrain_cfg
-        self.norm_cfg = norm_cfg
-
-        self.device = torch.device(pretrain_cfg.device)
-        self.method.to(self.device)
-        self.optimizer = torch.optim.AdamW(
-            self.method.parameters(),
-            lr=pretrain_cfg.lr,
-            weight_decay=pretrain_cfg.weight_decay,
-        )
-
-    def _to_device(self, views: Views) -> Views:
-        if isinstance(views, tuple):
-            x1, x2 = views
-            x1 = normalize_tensor(x1.to(self.device, non_blocking=True), mean=self.norm_cfg.mean, std=self.norm_cfg.std)
-            x2 = normalize_tensor(x2.to(self.device, non_blocking=True), mean=self.norm_cfg.mean, std=self.norm_cfg.std)
-            return (x1, x2)
-
-        out: list[torch.Tensor] = []
-        for x in views:
-            x = x.to(self.device, non_blocking=True)
-            out.append(normalize_tensor(x, mean=self.norm_cfg.mean, std=self.norm_cfg.std))
-        return out
-
-    def train_one_epoch(self, loader: DataLoader, *, epoch: int) -> Dict[str, float]:
-        self.method.train()
-        total = 0
-        total_loss = 0.0
-
-        _load_time_total = 0.0
-        _compute_time_total = 0.0
-        _t_iter_start = time.perf_counter()
-
-        for step, (views, _) in enumerate(loader):
-            _t_data_end = time.perf_counter()
-            _load_time = _t_data_end - _t_iter_start
-            _load_time_total += _load_time
-
-            views = self._to_device(views)
-            self.optimizer.zero_grad(set_to_none=True)
-            loss = self.method(views)
-            loss.backward()
-            self.optimizer.step()
-
-            _t_compute_end = time.perf_counter()
-            _compute_time = _t_compute_end - _t_data_end
-            _compute_time_total += _compute_time
-
-            bs = int(views[0].size(0) if isinstance(views, tuple) else views[0].size(0))
-            total += bs
-            total_loss += float(loss.item()) * bs
-
-            # First 3 steps: print detailed timing every time
-            if step < 3:
-                print(
-                    f"[DEBUG pretrain] epoch={epoch} step={step}  "
-                    f"data_load={_load_time:.3f}s  compute={_compute_time:.3f}s  "
-                    f"loss={loss.item():.4f}",
-                    flush=True,
-                )
-
-            if self.pretrain_cfg.log_every > 0 and (step + 1) % self.pretrain_cfg.log_every == 0:
-                avg_load = _load_time_total / (step + 1)
-                avg_compute = _compute_time_total / (step + 1)
-                print(
-                    f"epoch={epoch} step={step+1}/{len(loader)} loss={total_loss/max(1,total):.4f}  "
-                    f"[avg data_load={avg_load:.3f}s  avg compute={avg_compute:.3f}s]",
-                    flush=True,
-                )
-
-            _t_iter_start = time.perf_counter()
-
-        print(
-            f"[DEBUG pretrain timing] epoch={epoch} TOTAL "
-            f"data_load={_load_time_total:.2f}s  compute={_compute_time_total:.2f}s  "
-            f"data_frac={_load_time_total / max(1e-6, _load_time_total + _compute_time_total):.1%}",
-            flush=True,
-        )
-        return {"loss": total_loss / max(1, total)}
