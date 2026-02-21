@@ -62,7 +62,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         type=str,
         default="supervised",
         choices=["supervised"],
-        help="Only supervised training is supported (SSL/pretrain removed).",
+        help="Only supervised training is supported.",
     )
     p.add_argument("--arch", type=str, default="resnet18", help="timm backbone name")
     p.add_argument("--dataset", type=str, default="soybean")
