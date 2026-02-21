@@ -1,8 +1,18 @@
 # Format: <seed> <arch>
 # Lines starting with # are ignored.
 
-41
-42
-43
-44
-45
+41 resnet18
+42 resnet18
+43 resnet18
+44 resnet18
+45 resnet18
+41 resnet50
+42 resnet50
+43 resnet50
+44 resnet50
+45 resnet50
+41 vit_small_patch16_224.dino
+42 vit_small_patch16_224.dino
+43 vit_small_patch16_224.dino
+44 vit_small_patch16_224.dino
+45 vit_small_patch16_224.dino

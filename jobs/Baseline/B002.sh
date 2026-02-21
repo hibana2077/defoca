@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuvolta
-#PBS -J 0-4
+#PBS -J 10-14
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
@@ -52,7 +52,7 @@ cd ../..
 
 LOG_DIR="logs/Baseline"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/B000_idx${IDX}_seed${SEED}.log"
+LOG_FILE="$LOG_DIR/B002_idx${IDX}_seed${SEED}.log"
 
 {
   echo "===== DEFOCA job start ====="
