@@ -11,3 +11,5 @@ CEA005,vit_small_patch16_224.dino,cub200,y,y,n,
 CEAG000,resnet18,cotton80,y,n,y,
 CEAG001,resnet50,cotton80,y,n,y,
 CEAG002,vit_small_patch16_224.dino,cotton80,y,n,y,
+CB000,resnet18,cotton80,y,y,y,0.2700,0.0123
+CB001,resnet50,cotton80,y,y,y,
