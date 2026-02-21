@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -P yp87
 #PBS -q gpuhopper
-#PBS -J 0-4
+#PBS -J 10-14
 #PBS -r y
 #PBS -l ngpus=1
 #PBS -l ncpus=12
@@ -52,7 +52,7 @@ cd ../..
 
 LOG_DIR="logs/CEAG"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/CEAG000_idx${IDX}_seed${SEED}.log"
+LOG_FILE="$LOG_DIR/CEAG002_idx${IDX}_seed${SEED}.log"
 
 {
   echo "===== DEFOCA job start ====="
