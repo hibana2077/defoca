@@ -163,7 +163,7 @@ class ClsPipeline:
         cfg = self.cea_cfg
         target = str(cfg.gate_target)
 
-        is_vit = hasattr(self.model, "blocks") and isinstance(getattr(self.model, "blocks"), (list, nn.ModuleList))
+        is_vit = hasattr(self.model, "blocks") and isinstance(getattr(self.model, "blocks"), (list, nn.ModuleList, nn.Sequential))
         is_cnn = hasattr(self.model, str(cfg.cnn_stage))
 
         if target == "auto":
@@ -634,9 +634,9 @@ class ClsPipeline:
                         m = self._qstar_to_feature_mask(q_star1, size_hw=(int(cfg.P), int(cfg.P)))
                         self._gate_mask_map = m.repeat_interleave(v, dim=0)
 
-                    feats2, logits2 = self._timm_forward_features_and_logits(x)
-                    cls_loss = self.criterion(logits2, y)
-                    q2, _q_star2 = self._compute_q_and_qstar(views=views, labels=labels, feats=feats2, logits=logits2, retain_graph=True)
+                    feats2, logits = self._timm_forward_features_and_logits(x)
+                    cls_loss = self.criterion(logits, y)
+                    q2, _q_star2 = self._compute_q_and_qstar(views=views, labels=labels, feats=feats2, logits=logits, retain_graph=True)
                     align_loss, cea_logs = self._alignment_losses_from_q(q=q2, q_star=q_star1)
                     loss = cls_loss + align_loss
 
