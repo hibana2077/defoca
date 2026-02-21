@@ -50,7 +50,7 @@ export HF_HUB_OFFLINE=1
 
 cd ../..
 
-LOG_DIR="logs/Baseline"
+LOG_DIR="logs/CEA"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/B000_idx${IDX}_seed${SEED}.log"
 
