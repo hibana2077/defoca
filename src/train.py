@@ -110,50 +110,22 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     # CEA (TIP version: evidence alignment)
     p.add_argument("--cea", action="store_true", help="Enable CEA (Consensus Evidence Alignment) loss")
-    p.add_argument(
-        "--cea-signal",
-        type=str,
-        default="gradcam",
-        choices=["gradcam", "feat_norm", "input_grad"],
-        help="Evidence signal source (gradcam is usually best trade-off)",
-    )
-    p.add_argument(
-        "--cea-P",
-        type=int,
-        default=0,
-        help="CEA evidence grid size P (0 = follow --P)",
-    )
-    p.add_argument("--cea-tau", type=float, default=0.2)
-    p.add_argument("--cea-gamma", type=float, default=1.0)
-    p.add_argument("--cea-topk", type=int, default=4)
-    p.add_argument("--cea-lambda-align", type=float, default=1.0)
-    p.add_argument("--cea-lambda-js", type=float, default=1.0)
-    p.add_argument("--cea-lambda-iou", type=float, default=1.0)
+    p.add_argument("--cea-k", type=float, default=1.0, help="CEA overall strength (multiplies alignment loss)")
 
     # CEA Version B: evidence-guided gating
-    p.add_argument("--cea-gate", action="store_true", help="Enable evidence-guided gating (Version B)")
-    p.add_argument("--cea-gate-alpha", type=float, default=1.0, help="Gating strength (0 disables effect)")
-    p.add_argument(
-        "--cea-gate-target",
-        type=str,
-        default="auto",
-        choices=["auto", "vit", "cnn"],
-        help="Where to apply gating (auto picks based on model)",
-    )
-    p.add_argument(
-        "--cea-vit-block",
-        type=int,
-        default=-1,
-        help="ViT block index for gating (-1 = middle)",
-    )
-    p.add_argument(
-        "--cea-cnn-stage",
-        type=str,
-        default="layer3",
-        help="CNN stage name for gating (e.g., layer2/layer3/layer4 for ResNet)",
-    )
+    p.add_argument("--cea-gate", action="store_true", help="Enable evidence-guided gating (Version B; implies --cea)")
+    p.add_argument("--ceag-k", type=float, default=1.0, help="CEAG gating strength (0 disables effect)")
 
     args = p.parse_args(argv)
+
+    if float(args.cea_k) < 0.0:
+        raise ValueError("--cea-k must be >= 0")
+    if float(args.ceag_k) < 0.0:
+        raise ValueError("--ceag-k must be >= 0")
+
+    # CEAG uses the same evidence signal as CEA, so gating implies CEA.
+    if bool(args.cea_gate) and (not bool(args.cea)):
+        args.cea = True
 
     # DataLoader behavior
     prefetch_factor = int(args.prefetch_factor)
@@ -203,22 +175,26 @@ def main(argv: Optional[list[str]] = None) -> None:
         ensure_unique=not args.no_unique,
     )
 
-    cea_P = int(args.cea_P) if int(args.cea_P) > 0 else int(args.P)
+    # ---- CEA/CEAG slim interface: fixed defaults + derived values ----
+    # Evidence signal + grid are fixed to match paper-friendly defaults.
+    cea_P = int(args.P)
+    cea_topk = max(1, int(round((cea_P * cea_P) * float(args.ratio))))
     cea_cfg = CeaConfig(
         enabled=bool(args.cea),
-        signal=str(args.cea_signal),
+        signal="gradcam",
         P=cea_P,
-        tau=float(args.cea_tau),
-        gamma=float(args.cea_gamma),
-        topk=int(args.cea_topk),
-        lambda_align=float(args.cea_lambda_align),
-        lambda_js=float(args.cea_lambda_js),
-        lambda_iou=float(args.cea_lambda_iou),
+        tau=0.2,
+        gamma=1.0,
+        topk=int(cea_topk),
+        # One knob: multiply overall alignment loss.
+        lambda_align=float(args.cea_k),
+        lambda_js=1.0,
+        lambda_iou=1.0,
         gate_enabled=bool(args.cea_gate),
-        gate_alpha=float(args.cea_gate_alpha),
-        gate_target=str(args.cea_gate_target),
-        vit_block=int(args.cea_vit_block),
-        cnn_stage=str(args.cea_cnn_stage),
+        gate_alpha=float(args.ceag_k),
+        gate_target="auto",
+        vit_block=-1,
+        cnn_stage="layer3",
     )
 
     print("TrainConfig:", asdict(train_cfg))

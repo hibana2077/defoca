@@ -12,6 +12,6 @@ CEAG001,resnet50,cotton80,y,n,y,0.3449,0.01678
 CB000,resnet18,cotton80,y,y,y,0.2700,0.0123
 CB001,resnet50,cotton80,y,y,y,0.3617,0.0220
 DE000,resnet18,cotton80,y,n,n,0.2450,0.0182
-DE001,resnet50,cotton80,y,n,n,
+DE001,resnet50,cotton80,y,n,n,0.3450,0.0168
 DE003,resnet18,cub200,y,n,n,
 DE004,resnet50,cub200,y,n,n,
