@@ -52,7 +52,7 @@ cd ../..
 
 LOG_DIR="logs/CB"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/CB000_idx${IDX}_seed${SEED}.log"
+LOG_FILE="$LOG_DIR/CB001_idx${IDX}_seed${SEED}.log"
 
 {
   echo "===== DEFOCA job start ====="
