@@ -164,13 +164,32 @@ class ClsPipeline:
         target = str(cfg.gate_target)
 
         is_vit = hasattr(self.model, "blocks") and isinstance(getattr(self.model, "blocks"), (list, nn.ModuleList, nn.Sequential))
-        is_cnn = hasattr(self.model, str(cfg.cnn_stage))
+        
+        try:
+            cnn_stage_module = self.model.get_submodule(str(cfg.cnn_stage))
+            is_cnn = True
+        except AttributeError:
+            cnn_stage_module = None
+            is_cnn = False
 
         if target == "auto":
             if is_vit:
                 target = "vit"
             elif is_cnn:
                 target = "cnn"
+            elif hasattr(self.model, "stages"):
+                # For models like TinyViT, Swin, ConvNeXt which have 'stages'
+                target = "cnn"
+                # Try to find the last stage
+                stages = getattr(self.model, "stages")
+                if isinstance(stages, (list, nn.ModuleList, nn.Sequential)):
+                    import dataclasses
+                    cfg = dataclasses.replace(cfg, cnn_stage=f"stages.{len(stages)-1}")
+                    self.cea_cfg = cfg
+                    cnn_stage_module = self.model.get_submodule(cfg.cnn_stage)
+                    is_cnn = True
+                else:
+                    raise ValueError("CEA gating target auto-detection failed for this model (stages is not a list/Sequential)")
             else:
                 raise ValueError("CEA gating target auto-detection failed for this model")
 
@@ -224,9 +243,9 @@ class ClsPipeline:
 
         if target == "cnn":
             stage_name = str(cfg.cnn_stage)
-            if not hasattr(self.model, stage_name):
+            if cnn_stage_module is None:
                 raise ValueError(f"CEA gating cnn_stage not found: {stage_name}")
-            stage = getattr(self.model, stage_name)
+            stage = cnn_stage_module
 
             def _hook(_module, _inp, out):
                 if (not self._gate_active) or (self._gate_mask_map is None):
@@ -455,12 +474,16 @@ class ClsPipeline:
                         s = feats.pow(2).sum(dim=1).sqrt()
                     else:
                         s = (grads * feats).sum(dim=1).relu()
+                        if s.abs().sum() < 1e-6:
+                            s = feats.pow(2).sum(dim=1).sqrt()
                     grid = self._pool_to_grid(s, P=cfg.P)
                 elif feats.dim() == 3:
                     if signal == "feat_norm" or grads is None:
                         token_rel = feats.pow(2).sum(dim=2).sqrt()
                     else:
                         token_rel = (grads * feats).sum(dim=2).relu()
+                        if token_rel[:, 1:].abs().sum() < 1e-6:
+                            token_rel = feats.pow(2).sum(dim=2).sqrt()
                     token_rel = self._maybe_drop_cls_token(token_rel)
                     grid = self._pool_to_grid(token_rel, P=cfg.P)
                 else:
