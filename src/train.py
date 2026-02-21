@@ -11,7 +11,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from .pipeline import ClsPipeline, DefocaConfig, TrainConfig
+from .pipeline import ClsPipeline, CeaConfig, DefocaConfig, TrainConfig
 from .ufgvc import UFGVCDataset
 
 
@@ -103,6 +103,28 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--max-attempts", type=int, default=10)
     p.add_argument("--no-unique", action="store_true", help="Allow duplicate patch sets across views")
 
+    # CEA (TIP version: evidence alignment)
+    p.add_argument("--cea", action="store_true", help="Enable CEA (Consensus Evidence Alignment) loss")
+    p.add_argument(
+        "--cea-signal",
+        type=str,
+        default="gradcam",
+        choices=["gradcam", "feat_norm", "input_grad"],
+        help="Evidence signal source (gradcam is usually best trade-off)",
+    )
+    p.add_argument(
+        "--cea-P",
+        type=int,
+        default=0,
+        help="CEA evidence grid size P (0 = follow --P)",
+    )
+    p.add_argument("--cea-tau", type=float, default=0.2)
+    p.add_argument("--cea-gamma", type=float, default=1.0)
+    p.add_argument("--cea-topk", type=int, default=4)
+    p.add_argument("--cea-lambda-align", type=float, default=1.0)
+    p.add_argument("--cea-lambda-js", type=float, default=1.0)
+    p.add_argument("--cea-lambda-iou", type=float, default=1.0)
+
     args = p.parse_args(argv)
 
     # DataLoader behavior
@@ -166,8 +188,22 @@ def main(argv: Optional[list[str]] = None) -> None:
         ensure_unique=not args.no_unique,
     )
 
+    cea_P = int(args.cea_P) if int(args.cea_P) > 0 else int(args.P)
+    cea_cfg = CeaConfig(
+        enabled=bool(args.cea),
+        signal=str(args.cea_signal),
+        P=cea_P,
+        tau=float(args.cea_tau),
+        gamma=float(args.cea_gamma),
+        topk=int(args.cea_topk),
+        lambda_align=float(args.cea_lambda_align),
+        lambda_js=float(args.cea_lambda_js),
+        lambda_iou=float(args.cea_lambda_iou),
+    )
+
     print("TrainConfig:", asdict(train_cfg))
     print("DefocaConfig:", asdict(defoca_cfg))
+    print("CeaConfig:", asdict(cea_cfg))
     print(f"num_classes={num_classes}")
 
     # ---- GPU / env debug info ----
@@ -205,10 +241,16 @@ def main(argv: Optional[list[str]] = None) -> None:
             prefetch_factor=prefetch_factor if train_cfg.num_workers > 0 else None,
         )
 
-    pipeline = ClsPipeline(model=model, num_classes=num_classes, train_cfg=train_cfg, defoca_cfg=defoca_cfg)
+    pipeline = ClsPipeline(model=model, num_classes=num_classes, train_cfg=train_cfg, defoca_cfg=defoca_cfg, cea_cfg=cea_cfg)
     for epoch in range(1, train_cfg.epochs + 1):
         train_metrics = pipeline.train_one_epoch(train_loader, epoch=epoch, generator=gen)
-        print(f"epoch={epoch} train loss={train_metrics['loss']:.4f} acc={train_metrics['acc']:.4f}")
+        if bool(args.cea):
+            print(
+                f"epoch={epoch} train loss={train_metrics['loss']:.4f} "
+                f"acc={train_metrics['acc']:.4f} align={train_metrics['align']:.4f}"
+            )
+        else:
+            print(f"epoch={epoch} train loss={train_metrics['loss']:.4f} acc={train_metrics['acc']:.4f}")
         if val_loader is not None:
             val_metrics = pipeline.evaluate(val_loader)
             print(f"epoch={epoch} val   loss={val_metrics['loss']:.4f} acc={val_metrics['acc']:.4f}")
