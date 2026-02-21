@@ -14,7 +14,7 @@ module load cuda/12.6.2
 
 set -euo pipefail
 
-SCRIPT_DIR='/scratch/yp87/sl5952/defoca/jobs/Baseline'
+SCRIPT_DIR='/scratch/yp87/sl5952/defoca/jobs/CEA'
 EXP_FILE="$SCRIPT_DIR/experiments.txt"
 
 # PBS array index (0-based). Fall back to 0 when running interactively.
