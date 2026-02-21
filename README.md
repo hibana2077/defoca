@@ -4,17 +4,17 @@ This repo contains a minimal classification pipeline for UFGVC datasets with **D
 
 ## Run
 
-Train baseline (no DEFOCA):
+ViT (DeiT-S)
 
-`python3 -m src.train --dataset soybean --root ./data --epochs 10`
+`python3 -m src.train --dataset cub_200_2011 --arch deit_small_patch16_224 --defoca --V 8 --P 4 --cea --cea-signal gradcam --cea-gate --cea-gate-target vit --cea-vit-block -1`
 
-Train with DEFOCA (multi-view, train-only):
+ResNet18
 
-`python3 -m src.train --dataset soybean --root ./data --defoca --P 4 --ratio 0.25 --sigma 1.0 --strategy contiguous --V 8`
+`python3 -m src.train --dataset cub_200_2011 --arch resnet18 --defoca --V 8 --P 4 --cea --cea-signal gradcam --cea-gate --cea-gate-target cnn --cea-cnn-stage layer3`
 
-`python3 -m src.snr --dataset soybean --split test --n-samples 256 --device cuda`
+ResNet50
 
-`python3 -m src.train --task pretrain --dataset soybean --ssl-method simclr --epochs 100 --transfer-eval --transfer-dataset cifar10`
+`python3 -m src.train --dataset cub_200_2011 --arch resnet50 --defoca --V 8 --P 4 --cea --cea-signal gradcam --cea-gate --cea-gate-target cnn --cea-cnn-stage layer3`
 
 Notes:
 
