@@ -580,23 +580,59 @@ class ClsPipeline:
         correct = 0
         total_loss = 0.0
 
+        total_align = 0.0
+        total_js = 0.0
+        total_iou = 0.0
+
         for images, labels in loader:
             images = images.to(self.device, non_blocking=True)
             labels = labels.to(self.device, non_blocking=True)
-            images = normalize_tensor(images, mean=self.norm_cfg.mean, std=self.norm_cfg.std)
 
-            logits = self.model(images)
+            # Standard classification eval on clean images.
+            images_n = normalize_tensor(images, mean=self.norm_cfg.mean, std=self.norm_cfg.std)
+            logits = self.model(images_n)
             loss = self.criterion(logits, labels)
-            total_loss += float(loss.item()) * labels.size(0)
+            bs = int(labels.size(0))
+            total_loss += float(loss.item()) * bs
 
             pred = logits.argmax(dim=1)
             correct += int((pred == labels).sum().item())
-            total += int(labels.size(0))
+            total += bs
 
-        return {
+            # Optional: also report CEA alignment metrics on DEFOCA views.
+            if self.cea_cfg.enabled:
+                if self.defoca is None:
+                    raise RuntimeError("CEA enabled but DEFOCA is missing")
+                with torch.enable_grad():
+                    views = self._make_views(images)  # (B,V,C,H,W) normalized
+                    b, v, c, h, w = views.shape
+                    x = views.view(b * v, c, h, w)
+                    feats, logits_v = self._timm_forward_features_and_logits(x)
+                    q, q_star = self._compute_q_and_qstar(
+                        views=views,
+                        labels=labels,
+                        feats=feats,
+                        logits=logits_v,
+                        retain_graph=False,
+                    )
+                    _align_loss, cea_logs = self._alignment_losses_from_q(q=q, q_star=q_star)
+                    total_align += float(cea_logs["align"].item()) * bs
+                    total_js += float(cea_logs["js"].item()) * bs
+                    total_iou += float(cea_logs["iou"].item()) * bs
+
+        out = {
             "loss": total_loss / max(1, total),
             "acc": correct / max(1, total),
         }
+        if self.cea_cfg.enabled:
+            out.update(
+                {
+                    "align": total_align / max(1, total),
+                    "js": total_js / max(1, total),
+                    "iou": total_iou / max(1, total),
+                }
+            )
+        return out
 
     def train_one_epoch(self, loader: DataLoader, *, epoch: int, generator: Optional[torch.Generator] = None) -> Dict[str, float]:
         self.model.train()

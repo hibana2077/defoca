@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from dataclasses import asdict
@@ -90,6 +91,13 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--device", type=str, default=("cuda" if torch.cuda.is_available() else "cpu"))
     p.add_argument("--seed", type=int, default=42)
 
+    p.add_argument(
+        "--metrics-json",
+        type=str,
+        default="best_test.json",
+        help="Write best-test summary JSON to this path (only when test split exists).",
+    )
+
     # DEFOCA
     p.add_argument("--defoca", action="store_true", help="Enable DEFOCA during supervised training")
     p.add_argument("--P", type=int, default=4)
@@ -171,21 +179,8 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     print(f"Found {len(train_ds)} training samples")
 
-    val_ds = try_build_split(
-        dataset_name=args.dataset,
-        root=args.root,
-        split="val",
-        transform=val_t,
-        download=True,
-    )
-    if val_ds is None:
-        val_ds = try_build_split(
-            dataset_name=args.dataset,
-            root=args.root,
-            split="test",
-            transform=val_t,
-            download=True,
-        )
+    val_ds = try_build_split(dataset_name=args.dataset, root=args.root, split="val", transform=val_t, download=True)
+    test_ds = try_build_split(dataset_name=args.dataset, root=args.root, split="test", transform=val_t, download=True)
 
     num_classes = len(train_ds.classes)
 
@@ -266,7 +261,35 @@ def main(argv: Optional[list[str]] = None) -> None:
             prefetch_factor=prefetch_factor if train_cfg.num_workers > 0 else None,
         )
 
+    test_loader = None
+    if test_ds is not None:
+        test_loader = DataLoader(
+            test_ds,
+            batch_size=train_cfg.batch_size,
+            shuffle=False,
+            num_workers=train_cfg.num_workers,
+            pin_memory=pin_memory,
+            drop_last=False,
+            persistent_workers=persistent_workers,
+            prefetch_factor=prefetch_factor if train_cfg.num_workers > 0 else None,
+        )
+
+    # Per-epoch eval set: prefer test, fallback to val.
+    eval_name = None
+    eval_loader = None
+    if test_loader is not None:
+        eval_name = "test"
+        eval_loader = test_loader
+    elif val_loader is not None:
+        eval_name = "val"
+        eval_loader = val_loader
+
     pipeline = ClsPipeline(model=model, num_classes=num_classes, train_cfg=train_cfg, defoca_cfg=defoca_cfg, cea_cfg=cea_cfg)
+
+    best_test_acc = float("-inf")
+    best_test_epoch = -1
+    best_test_metrics = None
+
     for epoch in range(1, train_cfg.epochs + 1):
         train_metrics = pipeline.train_one_epoch(train_loader, epoch=epoch, generator=gen)
         if bool(args.cea):
@@ -277,9 +300,72 @@ def main(argv: Optional[list[str]] = None) -> None:
             )
         else:
             print(f"epoch={epoch} train loss={train_metrics['loss']:.4f} acc={train_metrics['acc']:.4f}")
-        if val_loader is not None:
-            val_metrics = pipeline.evaluate(val_loader)
-            print(f"epoch={epoch} val   loss={val_metrics['loss']:.4f} acc={val_metrics['acc']:.4f}")
+
+        if eval_loader is not None and eval_name is not None:
+            eval_metrics = pipeline.evaluate(eval_loader)
+            if bool(args.cea):
+                print(
+                    f"epoch={epoch} {eval_name:4s} loss={eval_metrics['loss']:.4f} acc={eval_metrics['acc']:.4f} "
+                    f"align={eval_metrics['align']:.4f} js={eval_metrics['js']:.4f} iou={eval_metrics['iou']:.4f}"
+                )
+            else:
+                print(f"epoch={epoch} {eval_name:4s} loss={eval_metrics['loss']:.4f} acc={eval_metrics['acc']:.4f}")
+
+            # Track best test metrics (only meaningful when test split exists).
+            if test_loader is not None and eval_name == "test":
+                acc = float(eval_metrics["acc"])
+                if acc > best_test_acc:
+                    best_test_acc = acc
+                    best_test_epoch = int(epoch)
+                    best_test_metrics = dict(eval_metrics)
+
+                if best_test_metrics is not None:
+                    if bool(args.cea):
+                        print(
+                            f"best_test@epoch={best_test_epoch} acc={best_test_metrics['acc']:.4f} "
+                            f"loss={best_test_metrics['loss']:.4f} align={best_test_metrics['align']:.4f} "
+                            f"js={best_test_metrics['js']:.4f} iou={best_test_metrics['iou']:.4f}"
+                        )
+                    else:
+                        print(
+                            f"best_test@epoch={best_test_epoch} acc={best_test_metrics['acc']:.4f} "
+                            f"loss={best_test_metrics['loss']:.4f}"
+                        )
+
+    # ---- end-of-run summary + JSON ----
+    if test_loader is not None and best_test_metrics is not None:
+        if bool(args.cea):
+            print(
+                f"[SUMMARY] best_test@epoch={best_test_epoch} "
+                f"acc={best_test_metrics['acc']:.4f} loss={best_test_metrics['loss']:.4f} "
+                f"align={best_test_metrics['align']:.4f} js={best_test_metrics['js']:.4f} iou={best_test_metrics['iou']:.4f}"
+            )
+        else:
+            print(
+                f"[SUMMARY] best_test@epoch={best_test_epoch} "
+                f"acc={best_test_metrics['acc']:.4f} loss={best_test_metrics['loss']:.4f}"
+            )
+
+        payload = {
+            "best_test_epoch": int(best_test_epoch),
+            "best_test": {k: float(v) for k, v in best_test_metrics.items()},
+            "arch": str(args.arch),
+            "dataset": str(args.dataset),
+            "num_classes": int(num_classes),
+            "train_cfg": asdict(train_cfg),
+            "defoca_cfg": asdict(defoca_cfg),
+            "cea_cfg": asdict(cea_cfg),
+        }
+
+        out_path = str(args.metrics_json)
+        out_dir = os.path.dirname(out_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        print(f"[SUMMARY] wrote {out_path}")
+    else:
+        print("[SUMMARY] no test split found; skip best_test JSON")
 
 
 if __name__ == "__main__":
