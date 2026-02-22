@@ -16,3 +16,8 @@
 43 vit_small_patch16_224.dino
 44 vit_small_patch16_224.dino
 45 vit_small_patch16_224.dino
+41 swinv2_base_window12_192.ms_in22k
+42 swinv2_base_window12_192.ms_in22k
+43 swinv2_base_window12_192.ms_in22k
+44 swinv2_base_window12_192.ms_in22k
+45 swinv2_base_window12_192.ms_in22k
