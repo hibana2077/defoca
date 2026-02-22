@@ -1,0 +1,28 @@
+# Format: <seed> <arch> <cea-k> <ceag-k>
+# Lines starting with # are ignored.
+
+41 resnet18 0.0625 0.0625
+41 resnet18 0.0625 0.125
+41 resnet18 0.0625 0.25
+41 resnet18 0.0625 0.5
+41 resnet18 0.0625 1.0
+41 resnet18 0.125 0.0625
+41 resnet18 0.125 0.125
+41 resnet18 0.125 0.25
+41 resnet18 0.125 0.5
+41 resnet18 0.125 1.0
+41 resnet18 0.25 0.0625
+41 resnet18 0.25 0.125
+41 resnet18 0.25 0.25
+41 resnet18 0.25 0.5
+41 resnet18 0.25 1.0
+41 resnet18 0.5 0.0625
+41 resnet18 0.5 0.125
+41 resnet18 0.5 0.25
+41 resnet18 0.5 0.5
+41 resnet18 0.5 1.0
+41 resnet18 1.0 0.0625
+41 resnet18 1.0 0.125
+41 resnet18 1.0 0.25
+41 resnet18 1.0 0.5
+41 resnet18 1.0 1.0
