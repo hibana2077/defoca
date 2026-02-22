@@ -1,12 +1,12 @@
 #!/bin/bash
 #PBS -P yp87
-#PBS -q gpuvolta
+#PBS -q dgxa100
 #PBS -J 15-19
 #PBS -r y
 #PBS -l ngpus=1
-#PBS -l ncpus=12
-#PBS -l mem=16GB
-#PBS -l walltime=03:00:00
+#PBS -l ncpus=16
+#PBS -l mem=10GB
+#PBS -l walltime=02:00:00
 #PBS -l wd
 #PBS -l storage=scratch/yp87
 
@@ -72,7 +72,7 @@ python3 -u -m src.train \
   --img-size 192 \
   --epochs 300 \
   --batch-size 256 \
-  --num-workers 8 \
+  --num-workers 12 \
   --lr 3e-4 --weight-decay 1e-4 \
   --seed "$SEED" --device cuda \
   >> "$LOG_FILE" 2>&1
